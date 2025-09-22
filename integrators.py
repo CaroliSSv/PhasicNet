@@ -1,0 +1,1 @@
+### Integrators, aka. classes that represent different neuron-integration (temporal summation) models. ex. Leaky-integrate and fire. 

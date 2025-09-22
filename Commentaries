@@ -1,0 +1,27 @@
+Repository structure:
+
+#Frontend
+main.py # frontend
+settings.py # settings class w/ overall configuation
+preprocessing.py  # data preprocessing, including download
+model.py  # Model class + methods
+train.py # Training setup
+analysis.py # Analysis class + methods
+#Backend
+sleep.py # SleepController class 
+integrators.py # Classes/functions for node integration
+thresholding.py  # Classes/functions for threshold rules
+plasticity.py  # Classes/functions for weight STDP rules
+default_config.yaml # Configuration file housing all default parameters
+
+utils.py # diverse helperfunctions
+io_utils.py # saving + loading logic
+
+##SUBFOLDERS
+/ experiments
+  ## Runs will be added here
+/ prototype_analysis
+   - R_mod_flowchart
+   - SNN_sleepy_mod_flowchart
+   - Prototype analysis
+

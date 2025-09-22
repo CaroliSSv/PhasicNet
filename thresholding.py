@@ -1,0 +1,1 @@
+### Thresholding, aka classes defining static or adaptice thresholds
