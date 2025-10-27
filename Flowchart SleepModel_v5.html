@@ -14,7 +14,7 @@
       --muted: #475569;
       --accent: #3b82f6;
       --arrow: #94a3b8;
-      --shadow: 0 12px 28px rgba(2, 8, 23, .08);
+      --shadow: 0 12px 28px #02081714;
     }
     body{
       margin:0; background:var(--bg); color:var(--text);
@@ -82,8 +82,8 @@
     .node.expanded{ transform: scale(1.015); }
     .node.expanded .details{ max-height: 400px; opacity:1; }
 
-    .chip{ position:absolute; top:10px; right:12px; font-size:12px;
-      background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;
+    .tag{ position:absolute; top:10px; right:12px; font-size:12px;
+      background:#f6f3f8; color:#818181; border:1px solid #9c8fa3;
       border-radius:999px; padding:3px 8px; }
 
     .details .top-section{
@@ -124,14 +124,14 @@
     */
     .data_transformation   { background:#ffffff; border:3px solid #4287ad;}
     .spikedata_transformation   { background:#ffffff; border:3px solid #3d3e9e;}
-    .model_general    { background:#ffffff; border:3px solid #8a7199;}
-    .membrane_integration  { background:#ffffff; border:3px solid #682599;} 
-    .threshold_spike    { background:#ffffff; border:3px solid #82175e;}
-    .weights_update  { background:#ffffff; border:3px solid #6a1424;}
-    .biophase  { background:#ffffff; border:3px solid #943b2b;} 
+    .model_general    { background:#ffffff; border:3px solid #8a6e9a;}
+    .membrane_integration  { background:#ffffff; border:4px solid #682599;} 
+    .threshold_spike    { background:#ffffff; border:4px solid #82175e;}
+    .weights_update  { background:#ffffff; border:4px solid #6a1424;}
+    .biophase  { background:#ffffff; border:4px solid #943b2b;} 
     .analytics    { background:#ffffff; border:3px solid #b48a2a;}
     .greenforest    { background:#ffffff; border:3px solid #0e3a30;}
-    .inserts    { background:#ffffff; border:3px solid #214a0f;}
+    .inserts    { background:#ffffff; border:4px solid #214a0f;}
     .technicals    { background:#ffffff; border:3px solid #707070;}
 
 
@@ -155,21 +155,23 @@
     justify-content: flex-start;   /* was: space-around */
     }
     /* Layer 1*/
-    #set_architecture {margin-top: 60px; } 
-    #set_rules { margin-top: 250px;}
-    #add_mod    { margin-top: 180px; margin-bottom: 10px; }  
+    #set_architecture {margin-top: 90px; } 
+    #set_rules { margin-top: 355px;}
+    #add_mod    { margin-top: 190px; margin-bottom: 10px; }  
     #train {margin-top: 40px;}
     /* Layer 2*/
+    #DenseTopology_Class {margin-top: 90px; } 
+    #set_integrator {margin-top: 174px;}
     #Noise_apply {margin-top: 290px;}
     #set_datacapture    {margin-top: 300px; }  
     #get_network {margin-top: 40px;}
     /* Layer 3*/
     #wrapped_weights {margin-top: 60px; }
-    #LIFIntegrator_Class {margin-top: 64px; }
+    #LIFIntegrator_Class {margin-top: 15px; }
     #DynamicsCapture_Class  {margin-top: 300px; } 
     /* Layer 4*/
     #ModeController_Class {margin-top: 430px;}
-    #TrainingMode_apply {margin-top: 1790px; }
+    #TrainingMode_apply {margin-top: 1947px; }
     
 
     /* PIPELINE PREPROCESSING CUSTOMIZATION OF LAYOUT*/
@@ -248,6 +250,20 @@
                     <h2 class="title">.instantiate_logger()</h2>
                     <p class="summary">SUMMARY SUMMARY SUMMARY</p>
                     <div class="details" id="instantiate_logger-details">
+                        <div class="top-section">
+                            <p>DETAILS DETAILS DETAILS.</p></div>
+                        <div class="input-output-section">
+                            <div class="io_column">
+                    <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                            <div class="io_column">
+                    <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                        </div>
+                    </div>
+                </article>
+                <article class="node technicals" id="set_globalseed" role="button" aria-expanded="false" aria-controls="set_globalseed-details">
+                    <h2 class="title">.set_globalseed()</h2>
+                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                    <div class="details" id="set_globalseed-details">
                         <div class="top-section">
                             <p>DETAILS DETAILS DETAILS.</p></div>
                         <div class="input-output-section">
@@ -736,6 +752,7 @@
 
             <article class="node model_general" id="train" role="button" aria-expanded="false" aria-controls="train-details">
                 <h2 class="title">.train()</h2>
+                <span class="tag">RUN</span>
                 <p class="summary">SUMMARY SUMMARY SUMMARY</p>
                 <div class="details" id="train-details">
                     <div class="top-section">
@@ -755,6 +772,7 @@
            
             <article class="node inserts" id="Noise_apply" role="button" aria-expanded="false" aria-controls="Noise_apply-details">
                 <h2 class="title">Noise.apply()</h2>
+                <span class="tag">2.3</span>
                 <p class="summary">SUMMARY SUMMARY SUMMARY</p>
                 <div class="details" id="Noise_apply-details">
                     <div class="top-section">
@@ -773,6 +791,7 @@
 
             <article class="node analytics" id="DynamicsCapture_apply" role="button" aria-expanded="false" aria-controls="DynamicsCapture_apply-details">
                 <h2 class="title">DynamicsCapture.apply()</h2>
+                <span class="tag">2.8</span>
                 <p class="summary">SUMMARY SUMMARY SUMMARY</p>
                 <div class="details" id="DynamicsCapture_apply-details">
                     <div class="top-section">
@@ -793,28 +812,10 @@
 
         <!-- Layer 2 -->
         <div class="layer2">
-            <article class="node model_general" id="set_connectivity" role="button" aria-expanded="false" aria-controls="set_connectivity-details">
-                <h2 class="title">.set_connectivity()</h2>
+            <article class="node model_general" id="DenseTopology_Class" role="button" aria-expanded="false" aria-controls="DenseTopology_Class-details">
+                <h2 class="title">DenseTopology Class</h2>
                 <p class="summary">SUMMARY SUMMARY SUMMARY</p>
-                <div class="details" id="set_connectivity-details">
-                    <div class="top-section">
-                        <p>DETAILS DETAILS DETAILS.</p>
-                    </div>
-                    <div class="input-output-section">
-                        <div class="io_column">
-                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
-                        </div>
-                        <div class="io_column">
-                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
-                        </div>
-                    </div>
-                </div>
-            </article>
-
-            <article class="node model_general" id="set_weights" role="button" aria-expanded="false" aria-controls="set_weights-details">
-                <h2 class="title">.set_weights()</h2>
-                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
-                <div class="details" id="set_weights-details">
+                <div class="details" id="DenseTopology_Class-details">
                     <div class="top-section">
                         <p>DETAILS DETAILS DETAILS.</p>
                     </div>
@@ -1065,6 +1066,7 @@
 
             <article class="node model_general" id="step" role="button" aria-expanded="false" aria-controls="step-details">
                 <h2 class="title">.step()</h2>
+                <span class="tag">1.</span>
                 <p class="summary">SUMMARY SUMMARY SUMMARY</p>
                 <div class="details" id="step-details">
                     <div class="top-section">
@@ -1084,10 +1086,46 @@
 
         <!-- Layer 3 -->
         <div class="layer3">
-            <article class="node model_general" id="wrapped_weights" role="button" aria-expanded="false" aria-controls="wrapped_weights-details">
-                <h2 class="title">[WRAPPED WEIGHTS]</h2>
+            <article class="node model_general" id="set_nodes" role="button" aria-expanded="false" aria-controls="set_nodes-details">
+                <h2 class="title">.set_nodes()</h2>
                 <p class="summary">SUMMARY SUMMARY SUMMARY</p>
-                <div class="details" id="wrapped_data-details">
+                <div class="details" id="set_nodes-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="set_connectivity" role="button" aria-expanded="false" aria-controls="set_connectivity-details">
+                <h2 class="title">.set_connectivity()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_connectivity-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="set_weights" role="button" aria-expanded="false" aria-controls="set_weights-details">
+                <h2 class="title">.set_weights()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_weights-details">
                     <div class="top-section">
                         <p>DETAILS DETAILS DETAILS.</p>
                     </div>
@@ -1266,23 +1304,24 @@
                 </div>
             </article>
 
-            <article class="node technicals" id="load_data" role="button" aria-expanded="false" aria-controls="load_data-details">
-                    <h2 class="title">.load_data()</h2>
-                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
-                    <div class="details" id="load_data-details">
-                        <div class="top-section">
-                            <p>DETAILS DETAILS DETAILS.</p></div>
-                        <div class="input-output-section">
-                            <div class="io_column">
-                    <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
-                            <div class="io_column">
-                    <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
-                        </div>
+            <article class="node technicals" id="DataLoader_Class" role="button" aria-expanded="false" aria-controls="DataLoader_Class-details">
+                <h2 class="title">DataLoader Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="DataLoader_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p></div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                        <div class="io_column">
+                <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
                     </div>
-                </article>
+                </div>
+            </article>
 
             <article class="node membrane_integration" id="LIFIntegrator_step" role="button" aria-expanded="false" aria-controls="LIFIntegrator_step-details">
                 <h2 class="title">LIFIntegrator.step()</h2>
+                <span class="tag">2.5</span>
                 <p class="summary">SUMMARY SUMMARY SUMMARY</p>
                 <div class="details" id="LIFIntegrator_step-details">
                     <div class="top-section">
@@ -1301,6 +1340,7 @@
 
             <article class="node threshold_spike" id="AdaptiveThreshold_step" role="button" aria-expanded="false" aria-controls="AdaptiveThreshold_step-details">
                 <h2 class="title">AdaptiveThreshold.step()</h2>
+                <span class="tag">2.6</span>
                 <p class="summary">SUMMARY SUMMARY SUMMARY</p>
                 <div class="details" id="AdaptiveThreshold_step-details">
                     <div class="top-section">
@@ -1319,6 +1359,7 @@
 
             <article class="node weights_update" id="STDPPlasticity_step" role="button" aria-expanded="false" aria-controls="STDPPlasticity_step-details">
                 <h2 class="title">STDPPlasticity.step()</h2>
+                <span class="tag">2.7</span>
                 <p class="summary">SUMMARY SUMMARY SUMMARY</p>
                 <div class="details" id="STDPPlasticity_step-details">
                     <div class="top-section">
@@ -1342,6 +1383,7 @@
 
             <article class="node technicals" id="TrainingMode_apply" role="button" aria-expanded="false" aria-controls="TrainingMode_apply-details">
                 <h2 class="title">TrainingMode.apply_*()</h2>
+                <span class="tag">2.1</span>
                 <p class="summary">SUMMARY SUMMARY SUMMARY</p>
                 <div class="details" id="TrainingMode_apply-details">
                     <div class="top-section">
@@ -1360,6 +1402,7 @@
 
             <article class="node biophase" id="HomeostaticSleep_apply" role="button" aria-expanded="false" aria-controls="HomeostaticSleep_apply-details">
                 <h2 class="title">HomeostaticSleep.apply_*()</h2>
+                <span class="tag">2.2</span>
                 <p class="summary">SUMMARY SUMMARY SUMMARY</p>
                 <div class="details" id="HomeostaticSleep_apply-details">
                     <div class="top-section">
@@ -1376,20 +1419,21 @@
                 </div>
             </article>
 
-            <article class="node technicals" id="DataLoader_Class" role="button" aria-expanded="false" aria-controls="DataLoader_Class-details">
-                    <h2 class="title">DataLoader Class</h2>
-                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
-                    <div class="details" id="DataLoader_Class-details">
-                        <div class="top-section">
-                            <p>DETAILS DETAILS DETAILS.</p></div>
-                        <div class="input-output-section">
-                            <div class="io_column">
-                    <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
-                            <div class="io_column">
-                    <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
-                        </div>
+            <article class="node technicals" id="load_data" role="button" aria-expanded="false" aria-controls="load_data-details">
+                <h2 class="title">.load_data()</h2>
+                <span class="tag">2.3</span>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="load_data-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p></div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                        <div class="io_column">
+                <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
                     </div>
-                </article>
+                </div>
+            </article>
 
             <article class="node membrane_integration" id="integrate_membrane" role="button" aria-expanded="false" aria-controls="integrate_membrane-details">
                 <h2 class="title">integrate_membrane</h2>
@@ -1610,22 +1654,22 @@
   <script>
     const EDGES = [
         ["Settings_Class", "configure"], 
-        ["configure", "instantiate_configuration"], ["configure", "instantiate_logger"], ["configure", "set_device"], ["configure", "set_datatype"], ["configure", "update_schema"],
+        ["configure", "instantiate_configuration"], ["configure", "instantiate_logger"], ["configure", "set_globalseed"], ["configure", "set_device"], ["configure", "set_datatype"], ["configure", "update_schema"],
 
         ["Preprocessor_Class", "normalize"], ["Preprocessor_Class", "img_to_spike"], ["Preprocessor_Class", "add"], ["Preprocessor_Class", "get_data"], ["Preprocessor_Class", "dog"], 
         ["normalize", "set_batching"], ["img_to_spike", "set_batching"], ["add", "add_noise"], ["add", "add_breaks"],
         ["set_batching", "wrapped_data"], ["add_noise", "wrapped_data"], ["add_breaks", "wrapped_data"],
 
         ["SNN_Class", "set_architecture"], ["SNN_Class", "set_rules"], ["SNN_Class", "add_mod"], ["SNN_Class", "get_network"], ["SNN_Class", "get_architecture"], ["SNN_Class", "get_rules"], ["SNN_Class", "plot_connectivity_matrix_mod"], ["SNN_Class", "get_node_degrees_mod"], ["SNN_Class", "plot_node_degrees_mod"], ["SNN_Class", "train"],
-        ["set_architecture", "set_connectivity"], ["set_architecture", "set_weights"], 
+        ["set_architecture", "DenseTopology_Class"], ["DenseTopology_Class", "set_nodes"], ["DenseTopology_Class", "set_connectivity"], ["DenseTopology_Class", "set_weights"], 
         ["set_rules", "set_integrator"], ["set_rules", "set_thresholds"], ["set_rules", "set_plasticity"], ["set_rules", "set_phaserules"], ["set_mode", "TrainingMode_Class"], ["add_mod", "add_noise_mod"],
         ["set_connectivity", "wrapped_weights"], ["set_weights", "wrapped_weights"],
         ["set_integrator", "LIFIntegrator_Class"], ["set_thresholds", "AdaptiveThreshold_Class"], ["set_plasticity", "STDPPlasticity_Class"], ["set_phaserules", "HomeostaticSleep_Class"], ["add_noise_mod", "Noise_Class"], ["set_datacapture", "DynamicsCapture_Class"],
-        ["ModeController_Class", "TrainingMode_apply"], ["PhaseController_Class", "HomeostaticSleep_apply"],["load_data", "DataLoader_Class"], ["LIFIntegrator_step", "integrate_membrane"], ["AdaptiveThreshold_step", "update_threshold"], ["AdaptiveThreshold_step", "emit_spikes"], ["STDPPlasticity_step", "update_weights"], 
+        ["ModeController_Class", "TrainingMode_apply"], ["PhaseController_Class", "HomeostaticSleep_apply"],["DataLoader_Class", "load_data"], ["LIFIntegrator_step", "integrate_membrane"], ["AdaptiveThreshold_step", "update_threshold"], ["AdaptiveThreshold_step", "emit_spikes"], ["STDPPlasticity_step", "update_weights"], 
 
         ["train", "set_datacapture"], ["train", "set_mode"], ["train", "set_device_mod"], ["train", "update_schema_mod"], ["train", "set_epochs"], ["train", "set_batching_mod"], ["train", "set_test_train"], ["train", "set_validation_folds"], ["train", "step"], 
         ["Noise_apply", "step"], ["DynamicsCapture_apply", "step"],
-        ["step", "ModeController_Class"], ["step", "PhaseController_Class"], ["step", "load_data"], ["step", "LIFIntegrator_step"], ["step", "AdaptiveThreshold_step"], ["step", "STDPPlasticity_step"], 
+        ["step", "ModeController_Class"], ["step", "PhaseController_Class"], ["step", "DataLoader_Class"], ["step", "LIFIntegrator_step"], ["step", "AdaptiveThreshold_step"], ["step", "STDPPlasticity_step"], 
         ["Analysis_Class", "get_experiment_info"], ["Analysis_Class", "plot_connectivity_matrix"], ["Analysis_Class", "plot_node_degrees"], ["Analysis_Class", "get_node_degrees"], ["Analysis_Class", "plot_node_degrees"], ["Analysis_Class", "get_weighted_membranes"],  
 
     ];
