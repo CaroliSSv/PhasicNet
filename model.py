@@ -1,221 +1,432 @@
 #### Model class + methods
 
-#########DRAFT STRUCTURE + PRINT statements
- # Hardcoded
-## Todo:    1.  classes --> config, clf, + COMPILE --> FREEZE --> PRODUCE LOGGING HASH (+ AUTO-save?)
-            ## Class for building net? YES -> consistency of classes + freeze + dirty flag for pre-compile
-#           2. parameters --> default config source (YAML)
-#           3. training loops hardcoded --> collect relevant param class
-#           4. NOTES -> google OR numpy structure? Bio/NEURO or ML?
-#           5. ADD COMPILE function
-#           6. INTEGRATE LOGGER + CONFIGS from 
-##          7. var-name consistency?
+from dataclasses import dataclass, field, asdict
+from typing import Any, Dict, Optional, Protocol, Type
+import numpy as np
+## PLANNED:
+import yaml #-> configs as a dict file system (YAML)
+# import json -> configs frozen backup to secure reproducibility
+# import hashlib -> hash ID and secure reproducibility
+# import pytorch -> for port to pytorch. (and to CUDA?)
+# import tqdm 
 
-###Spes.g. ide-oppsett, alt i klasse + SNN "wrapper" for moduler (rules + architecture)
+# Preprocessor: Use sklearn to import from MNIST? Or use custom?
+
+
+
+
+
+###########################################################
+########################################################### CURRENT WORK: WIP: TESTING NEURONS
+################-----SETTINGS-----#########################
+
+#############NOTE when is FLOAT actually neccecary as opposed to INT or FLOAT32 RATHER THAN 64? CHECK resource-cost
+
+"""class Settings:
+    def __init__(self):
+        self.globalseed = None
+        self.datatype = None
+        self.device = None
+        self.logger = None"""
+
+
+
+########################################################
+######################################################## CURRENT WORK: WIP: TESTING NEURONS
+################-----MODEL-----#########################
+
+
+
+################-----SETUP-----#########################
+
+####----architecture builder plugin-----####
+"""class DenseTopology:
+    "Topology builder w/ setters for planning a neural network, then build to compile and freeze architecture, + JSONdump instance."
+    def __init__(self, seed, ID):
+        pass
+
+    pass
+
+"""
+
+####NOTE frozen classes (frozen after architecture compile) must create an UNFROZEN runtime copy OR include only values that DO NOT evolve during runtime.
+####NOTE correct solution? 1. NEVER FREEZE the dataclasses (JSON dump = frozen state at the beginning anyway) 2. Freeze then make copy for runtime.
+
+####----DATACLASS-----####
+"""
+@dataclass(frozen=True)
+class TopologyCfg:
+    N_in: int
+    N_out: int
+    T: int
+    seed: int
+"""
+
+
+########################################################## CURRENT WORK: WIP: TESTING NEURONS
+################-----RUNTIME-----#########################
+####----DATACLASSES-----####
+##NOTE REWRITE for synruns
+"""@dataclass(frozen=True)
+class SynapseCfg:
+    b: float"""
+
+@dataclass(frozen=True)
+class IntegratorCfg:
+    dt: float   ####SHOULD move to SNNCfg 
+    tau_mem: float
+    v_rest: float
+    r: float   # resistance (membrane) NOTE CURRENT convention: Capital letters = matrix (ex. V_th as opposed to v_th). 
+
+
+@dataclass(frozen=True)
+class ThresholdCfg:
+    v_reset: float
+    v_th: float         # default threshold
+    dt: Optional[float] = None  ###SHOULD MOVE TO SNNCfg
+    tau_th: Optional[float] = None
+    inc_tau: Optional[float] = None
+
+"""@dataclass(frozen=True)
+class PlasticityCfg: ## Should all be float? Possibly FLOAT32?
+    tau_pretrace: float
+    tau_posttrace: float
+    LTP_amplitude: float
+    LTD_amplitude: float
+    eta_exc: float
+    eta_inh: float
+
+    ## alternative to a hard clamp: CHECK DYPLÆRING NOTES. NOTE: Prefer leaky threshold or soft threshold
+    clamp_min: float  ### NOTE CLAMPING MUST BE PURPOSEFUL AND EXPOSED (+ Warnings added?)  edit
+    clamp_max: float ### NOTE CLAMPING EDIT"""
+
+##### RUNTIME config to contain all in one place **Excessive?
+
+
+
+
+# ---------------- STATES ----------------
+@dataclass
+class NeuronalState:
+    V: np.ndarray #float, (N,), Membrane state (voltage)
+    Spikes: np.ndarray #bool, (N,), Spike state
+    I: np.ndarray #float, (N,), Current state
+    V_th: Optional[np.ndarray] = None #float, (N,), Optional adaptive threshold state
+
+"""@dataclass
+class SynapticState:
+## EARLIER SPLIT Version (V3;;)
+#    signage: np.ndarray # attribution of inhibitory/excitatory (- or + applied to conductance)
+#    G: np.ndarray # Conductance (neurotransmitter state; absolute weight value) (conductance)
+
+    W: np.ndarray # FULL, dense array of all weights w/ sign according to /source/ inh or exc neuron
+    b: Optional[np.ndarray] = None # synaptic bias (sensitivity of individual synaptic receptors
+    pre_trace: Optional[np.ndarray] = None
+    post_trace: Optional[np.ndarray] = None"""
+
+
+@dataclass
+class UpdateState:
+    I: np.ndarray           #float, (N,), Sum of currents
+    dV: np.ndarray          #float, (N,), voltageUpdate
+    Spiking: np.ndarray      #bool, (N,), spike-state update
+    dV_th: Optional[np.ndarray] = None       #float, (N,), Optional adaptive_thresholdUpdate
+    dt_counters: Optional[np.ndarray] = None #INT, counts time since last spike
+
+
+@dataclass(frozen=True)
+class RuntimeCfg:
+#    SynapseCfg: SynapseCfg
+    integratorcfg: IntegratorCfg 
+    thresholdcfg: ThresholdCfg
+#    PlasticityCfg: PlasticityCfg
+
+
+########################### ----------------CLASSES------------------------------------
+###NOTE WRONG EDIT must REWRITE
+"""
+class DataLoader:
+    def __init__(self, X: np.ndarray):
+        self.X = X                      ### save state** ie current X
+        self.T = X.shape[0]             ### NOTE why T? Why T?
+        self.cursor = 0                 ###################  ***  This is CURRENT input (ie timestep_n = ...) from the beginning
+        self.last_shape = X.shape[1:]   ###################  *** This is CURRENT shape, WRONG PLACE**
+
+    def load(self):
+        x = self.X[self.cursor]
+        self.cursor = (self.cursor + 1) % self.T ###NOTE cursor + 1 better than for v in a? AVOID unoptimized for loops, DO vectorization/optimized runthroughs
+        return x
+"""
+
+
+### NOTE REWRITE for syn runs
+"""class Synapse:
+    def __init__(self, cfg: SynapseCfg): ###STATEFUL? NOTE check when to give state
+        self.b = cfg.b #?
+
+
+    def step(self, synstate: SynapticState, neurstate: NeuronalState, upd: UpdateState):
+        upd.I = synstate.W @ neurstate.Spikes if self.b is None else synstate.W @ neurstate.Spikes + self.b
+    """    
+
+class LIFIntegrator:
+    """Integrate membrane."""
+    def __init__(self, cfg: IntegratorCfg): ###STATEFUL? NOTE check when to give state
+        self.v_rest = cfg.v_rest
+        self.r = cfg.r                  #R for resistance
+        self.dt_tau = cfg.dt/cfg.tau_mem  # Euler decay update
+
+
+
+    #### MODULE SURFACE
+    def step(self, state: NeuronalState, upd: UpdateState) -> None: 
+        """
+        Integration step: dv ← (v_rest - state.V + R*I) * dt/τ_membrane
+        CODE: upd.dV = (self.v_rest - state.V + self.r*state.I) * self.dt_tau
+        """
+        upd.I *= self.r
+        np.subtract(self.v_rest, state.V, out=upd.dV)
+        np.add(upd.dV, state.I, out=upd.dV)
+        upd.dV *= self.dt_tau
+
+
+
+"""        #### EXPONENTIAL DECAY VARIANT
+        self.e_dttau = np.exp(-(cfg.dt/cfg.tau_mem))  # Exponential decay update
+        np.add(upd.dV, state.I, out=upd.dV)
+        upd.dV *= self.e_dttau"""
+
+
+###############################MAJOR REWRITE NEEDED WRONG ***
+########## Check why "v and theta is not accessed by pylance"
+class StaticThreshold:
+    def __init__(self, cfg: ThresholdCfg):
+        self.v_th = cfg.v_th
+        self.v_reset = cfg.v_reset
+
+    def step(self, state: NeuronalState, upd: UpdateState) -> None:
+        np.greater_equal(state.V, self.v_th, out=upd.Spiking)
+
+class AdaptiveThreshold:
+    """Adaptive spiking threshold mechanism.""" #βθ
+    def __init__(self, cfg: ThresholdCfg):
+        self.v_reset = cfg.v_reset
+        self.v_th = cfg.v_th   #Default threshold in adaptive case
+        self.dt_tau = cfg.dt/cfg.tau_th ## NOTE
+        self.inc_th = cfg.inc_th
+
+
+    def step(self, state: NeuronalState, upd: UpdateState) -> None:
+        """
+        Adaptive threshold update:  
+        Euler Decay:              dV_th ← (v_th - V_th) * τ_threshold
+        Euler Decay code:   upd.dV_th = (self.v_th - state.V_th) * self.τ_threshold 
+        Spikeadaption:          upd.dV_th + self.inc_th  #adaption increment on spike
+        """
+        # Threshold decay for all neurons
+        np.subtract(self.v_th, state.V_th, out=upd.dV_th)
+        upd.dV_th *= self.dt_tau
+
+        #Emit spikes
+        np.greater_equal(state.V, state.V_th, out=upd.Spiking)
+
+        #Spike adaption to spiking neurons
+        upd.dV_th[upd.Spiking] += self.inc_th
+
+        ###Neat pytorch version for later: upd.dV_th.add_(upd.Spiking.to(upd.dV_th.dtype), alpha=self.th_adaption)
+        #### NOTE MEMBRANE V RESET NOT APPLIED. This is left to the orchestrator
+
+        
+
+    ## alternative to a hard clamp: CHECK DYPLÆRING NOTES. NOTE: Prefer leady threshold or soft threshold
+    
+"""
+### MUST CLEAR UP: 
+#       1. REMOVE G and make - and + compliant with inh or exc neurons based on IDX
+class STDPPlasticity:
+    #STDP CLASS
+    def __init__(self, cfg: PlasticityCfg, neur_state, syn_state):   ####### NOTE WRONG?
+        self.tau_pretrace = cfg.tau_pretrace
+        self.tau_posttrace = cfg.tau_posttrace
+        self.LTP_amplitude = cfg.LTP_amplitude
+        self.LTD_amplitude = cfg.LTD_amplitude
+        self.eta_exc = cfg.eta_exc
+        self.eta_inh = cfg.eta_inh
+#        # CLAMPING should be EXPOSED (MOVE to SNN?)
+#        self.clamp_min = cfg.clamp_min
+#        self.clamp_max = cfg.clamp_max
+
+    ##NOTE 
+    def update_tracedecays(self, state: SynapticState): 
+        #ON SPIKE update trace decay coefficients for pre and post traces# (?)
+        self.decay_pretrace  = np.exp(-state.dt_counter / self.tau_pretrace)  ####MATHSTransformation 
+        self.decay_posttrace = np.exp(-state.dt_counter / self.tau_posttrace) ####MATHSTransformation
+
+    def update_trace(self, state: SynapticState):
+        self.syn.state.pre_trace  = self.decay_pretrace  * state.pre_trace  + pre_spike    ####MATHSTransformation
+        self.syn.state.post_trace = self.decay_posttrace * state.post_trace + post_spike   ####MATHSTransformation
+
+    # MATHSTransformation MATHSTransformation - MERGE G and SIGNAGE 
+    def update_weights(self, state: SynapticState):
+        ##Calculate LTP/LTD and apply trace update#
+
+        #NOTE This section must be rewritten for new E/I with inh exc allocation masks
+        # LTP / LTD contributions
+        ltp = self.LTP_amplitude * np.outer(post_spike, state.pre_trace)  ####MATHSTransformation 
+        ltd = self.LTD_amplitude * np.outer(state.post_trace, pre_spike)  ####MATHSTransformation
+
+        # Apply E/I learning rules NOTE This must be rewritten for new E/I setup
+        dG_exc = self.eta_exc * (ltp - ltd)  ####MATHSTransformation
+        dG_inh = self.eta_inh * (-ltp + ltd)  ####MATHSTransformation
+        ###NOTE remove the below?
+        dG = gate_exc * dG_exc + gate_inh * dG_inh ####MATHSTransformation
+
+        # Update magnitudes NOTE This must be rewritten for new E/I setup
+        self.syn.state.G += dG   ####MATHSTransformation
+
+        # *** Clamping intentionally removed (by your request) NOTE AGAIN SHOULD CLAMPING BE THERE???  WRONG ERROR
+
+    def step(self, state: SynapticState, upd: UpdateState):
+        #
+        #One full STDP update step:
+        #  1. update decays if needed
+        #  2. update traces
+        #  3. update weights
+          
+        # Update decays automatically (cached if dt constant) ##NOTE WRONG REWRITE ADD COUNTER
+        if self.decay_pretrace is None or self.decay_posttrace is None:
+            self.update_tracedecays(dt)
+
+        st = self.syn.state  ### WHY ST? AGAIN, NOTE EDIT 
+
+        # Update traces
+
+
+        # Update weights
+        self.update_weights(pre_spike, post_spike, gate_exc, gate_inh)"""
+
+
+"""
+############# LATER
+class Noise:
+    def __init__(self):
+        self.placeholder = None
+        pass
+    pass
+
+############# LATER
+# ---------------- 
+class HomeostaticSleep:
+    def __init__(self):
+        self.placeholder = None
+        pass
+    pass
+
+############# LATER
+# ----------------
+class DynamicsCapture:
+    def __init__(self):
+        self.placeholder = None
+        pass
+    pass
+"""
+
+# ---------------- ORCHESTRATOR ---------------- ######MAJOR REWRITE NEEDED. THIS IS WRONG NOTE *** 
 class SNN:
-    def __init__(self, name= "SNN", seed=None): ##        MUST BE GLOBALSEED IF GIVEN
-        self.name = name
-        self.seed = seed ##        MUST BE GLOBALSEED IF GIVEN
+    def __init__(self):
 
-        #Rules
-        self.phase = None
-        self.integrator = None
+        ## Class holders ##NOTE maybe remove this after all?
+        self.dataloader_class = None
+        self.synapse_class = None
+        self.integrator_class = None
+        self.threshold_class = None
+        self.plasticity_class = None
+        self.noise_class = None
+        self.phase_class = None
+        #Runtime Instatiated class holders
+        self.dataloader = None        
+        self.synapse = None
+        self.integrator = None        
         self.threshold = None
         self.plasticity = None
-
-        #Noise 
         self.noise = None
+        self.phase = None
+        # Configs,      Dataclasses for static parameters
+        self.topologycfg = None
+        self.runtimecfg = None
+        # States,        Dataclasses for dynamic parameters
+        self.syn_state = None
+        self.neur_state = None
+        self.upd = None
+        # Data and randomseed
+        self.data = None
+        self.rngs = None
 
-        #runtime rules
-        self.mode = None
-        self.device = None
-        self.schema = None
-        self.datacapture = None
+#    def set_integrator(self, integrator_class) -> None:
+#        self.integrator_class = integrator_class
 
-        #Architectural  -> convert to class network-setting/builder/create --> snn.build.set_... called internally?
-        ## *** class
-        ### Number of nodes
-        self.N_input_nodes = 0
-        self.N_excitatory_nodes = 0
-        self.N_inhibitory_nodes = 0
-        ### Matrixes
-        self.connectivity = {}
-        self.weights = {}
-        self._adjacency_matrix = None
-        self._weights_matrix = None
+    def set_threshold(self, threshold_class) -> None:
+        self.threshold_class = threshold_class
 
-    def set_phaserules(self, phase_class=None):
-        self.phase = phase_class
-        return self.phase
+    def instantiate_rules(self) -> None:
+        if self.threshold_class is None:
+            raise RuntimeError("Threshold class not set. Call set_threshold(...).")
+        self.integrator = self.integrator_class(self.runtimecfg.integratorcfg)
+        self.threshold = self.threshold_class(self.runtimecfg.thresholdcfg)
 
-    def set_integrator(self, integrator_class=None):
-        self.integrator = integrator_class
-        return self.integrator
+    def step(self, input, neur, syn, upd):
+        # Load data(time_step) -> input nodes in Spikes array
+#        self.dataloader.step(self, input, neur)
 
-    def set_threshold(self, threshold_class=None):
-        self.threshold = threshold_class
-        return self.threshold
+        # W @ Spikes -> I summed per neuron
+#        self.synapse.step(self, neur, syn, upd)
 
-    def set_plasticity(self, plasticity_class=None):
-        self.plasticity = plasticity_class
-        return self.plasticity
-
-    def set_noise(self, noise_class=None):
-        self.noise = noise_class
-        return self.noise
-
-    def set_rules(self, integrator_class=None, threshold_class=None, plasticity_class=None):
-        """Set all rules at once, using class objects."""
-        if integrator_class is not None:
-            self.set_integrator(integrator_class)
-        if threshold_class is not None:
-            self.set_threshold(threshold_class)
-        if plasticity_class is not None:
-            self.set_plasticity(plasticity_class)
-        if all(class_input is None for class_input in [integrator_class, threshold_class, plasticity_class]):
-            raise ValueError("No new rules set.")
-        ## Planned addons for possible errors:
-        #### REMOVE??  
-        #### *** HOW TO MAKE SURE RUNNING THIS DOES NOT WIPE EX. INTEGRATOR OR PLASTICITY ETC.???
-        #### If input_class == input_class -> "f"{input_class-name} already set." --> OVERWRITE initial input or add?
-        #### If ABSTRACT_CLASS from input_class == self.ABSTRACT_CLASS in SNN object: -> "f{Abstract class-name} already set. To replace write 'replace', to add write 'add', to cancel write 'c' or press enter."" --> OVERWRITE initial input or add?
-
-
-        print(f"[{self.name}] Initialized (seed={self.seed}).")
-############################
-    def set_nodes(self, N_excitatory: int = 0, N_inhibitory: int = 0, N_inputs: int = 0):
-
-        """Set number of nodes in network, create node-matrix***. 
-        Args:
-        N_excitatory: int = 0, Excitatory neurons
-        N_inhibitory: int = 0, Inhibitory neurons
-        N_inputs: int = 0 Input nodes, each a source of spikes (from preprocessor)
-        Returns:
-        """
-        if N_excitatory < 1:
-            raise ValueError("No excitatory nodes given.")
-        self.N_excitatory_nodes = N_excitatory
-        self.N_inhibitory_nodes = N_inhibitory
-        self.N_input_nodes = N_inputs
-        print(f"[{self.name}] Nodes set: number of excitatory nodes: {N_excitatory}, number of inhibitory nodes: {N_inhibitory}, number of input nodes: {N_inputs}")
-##############################
-    def set_connectivity(self, p_connectivity_all: float = None, p_connectivity_exc_exc: float = None, p_connectivity_exc_inh: float = None, 
-                         p_connectivity_inh_exc: float = None, p_connectivity_inh_inh: float = None, p_connectivity_input_exc: float = None):
-                         #p_connectivity_input_inh: float = None):
-        """Set initial probability of synapse/connection between all neurons/nodes or specific neuronal/node-groups.
-        Args:
+        # Integrate membrane -> dV per neuron
+        self.integrator.step(self, neur, upd)
+        self.neur_state.V += self.upd.dV #Update internal state array
         
-        Returns:
-        """
-        self.connectivity = dict(
-            all = p_connectivity_all,
-            exc_exc= p_connectivity_exc_exc,
-            exc_inh= p_connectivity_exc_inh,
-            inh_exc= p_connectivity_inh_exc,
-            inh_inh= p_connectivity_inh_inh,
-            input_exc= p_connectivity_input_exc)
-            #input_inh= p_connectivity_input_inh)
+        # (Update) threshold and 
+        self.threshold.step(self, neur, upd)
+        self.neur_state.V_th += self.upd_state.dV_th ## ONLY if adaptive threshold in use. Else: V_th = None and dV_th = None
+        self.neur_state.Spikes = self.upd_state.Spiking
 
-        print(f"[{self.name}] Connectivity: {self.connectivity}")
+#        self.plasticity.step(self, neur, syn, upd)
+#        self.syn_state.W += self.upd_state.dW
 
-############################
-    #FIX to classbuilder/net creator
-    def set_weights(self, weights_all: float = None, weights_exc_exc: float = None, weights_exc_inh: float = None,
-                    weights_inh_exc: float = None, weights_inh_inh: float = None, weights_input_exc: float = None): #weights_input_inh: float = None):
-                    
-        """Set initial synaptic strengths of for all synapses or for synapses between specific neuron-groups. /OR/ 
-        Set initial weights of connections/edges between all nodes or specific node-groups.
-        Args:
-        
-        Returns:
-        self. dictionary of initial synaptic strengths"""
-        self.weights = dict(
-            all = weights_all,
-            exc_exc = weights_exc_exc,
-            exc_inh = weights_exc_inh,
-            inh_exc = weights_inh_exc,
-            inh_inh = weights_inh_inh,
-            input_exc = weights_input_exc
-            )
 
-        print(f"[{self.name}] Initial weights: {self.weights}")
-
- 
-    def set_architecture(self): ### FIX utvendig eller invending? 
-        """Build architecture internally: set nodes and their interconnections.
-        """
-        N_inputs, N_excitatory, N_inhibitory = self.N_input_nodes, self.N_excitatory_nodes, self.N_inhibitory_nodes
-        N_total = N_inputs + N_excitatory + N_inhibitory
-        adj = np.zeros((N_total, N_total), dtype=bool)
-        W = np.zeros((N_total, N_total), dtype=float)
-
-        
-        idx_input = np.arange(0, N_inputs)
-        idx_exc = np.arange(N_inputs, N_inputs + N_excitatory)
-        idx_inh = np.arange(N_inputs + N_excitatory, N_total)
-
-        def connect(source, target, probability, weight):
-            if probability is None or probability <= 0 or probability > 1:
-                raise ValueError("Probability cannot be above 1 or below or = to 0.")
-            mask = np.random.rand(len(source), len(target)) < probability
-            adj[np.ix_(source, target)] = mask
-            W[np.ix_(source, target)] = mask*weight
-
-        # input nodes=SPIKE SOURCES to network nodes
-        connect(idx_input, idx_exc,
-                self.connectivity.get("input_exc", 0.1),
-                self.weights.get("input_exc", 0.1))
-                
-#        connect(idx_input, idx_inh,
-#                self.connectivity.get("input_inh", 0.0),
-#                self.weights.get("input_inh", 0.2))
-
-        # recurrent connections
-        ### FIX initial values -> param_base_values
-        connect(idx_exc, idx_exc,
-                self.connectivity.get("exc_exc", 0.1),
-                self.weights.get("exc_exc", 0.1))
-        connect(idx_exc, idx_inh,
-                self.connectivity.get("exc_inh", 0.1),
-                self.weights.get("exc_inh", 0.1))
-        connect(idx_inh, idx_exc,
-                self.connectivity.get("inh_exc", 0.1),
-                self.weights.get("inh_exc", -0.4))
-        connect(idx_inh, idx_inh,
-                self.connectivity.get("inh_inh", 0.1),
-                self.weights.get("inh_inh", -0.1))
-
-        self._adjacency_matrix, self._weights_matrix = adj, W
-        print(f"[{self.name}] Architecture built: {adj.sum()} edges, density={adj.mean():.3f}).")
-
-        return self._adjacency_matrix, self._weights_matrix
-
-#######################################
+    
 
 
 
 
-    def compile():
-        ### FIX RESTRUCTURE CLASSES -> FREEZE setup
-        pass
 
-    def load_data():
-        #called during train()
-        #call dataloader
+thresholdcfg_test = ThresholdCfg(v_reset=-90, v_th=-55)
+integratorcfg_test = IntegratorCfg(dt=1, tau_mem=20, v_rest=-70, r=10)
+runtimecfg_test = RuntimeCfg(integratorcfg_test,thresholdcfg_test)
+print("yaml data; ", yaml.dump(asdict(runtimecfg_test)))
 
-    def get_network():
-        pass
-    def get_rules():
-        pass
+snn_test = SNN()
+snn_test.set_threshold(AdaptiveThreshold)
+print(snn_test.threshold_class)
 
-    def train(data = None, set_mode = None, set_device = None, update_schema = None, set_batching = None):
-        #call modecontroller.tick() -> self.mode 
-        #call phasecontroller.tick() -> self.phase
-        #call self.load_data() -> uses data object and network architecture and runtime info to load data during training
-        #call self.noise.step() -> ensure noise applied on top of the following
-        #call self.integrator.step() -> integrate_membrane
-        #call self.threshold.step() -> update_threshold, emit_spikes
-        #call self.plasticity.step() -> update_weights
-        pass
 
- 
+
+
+
+"""
+Some typical parameters
+v_rest = -70
+v_th = -55
+v_reset = -90 (hyperpolarization)
+
+v_spike_max = +40
+ltp = 50% -> 100% +
+
+
+
+
+
+
+
+
+"""
