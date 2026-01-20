@@ -1,0 +1,1758 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="author" content="Caroline Sunniva Svortdal">
+  <title>PhasicNet</title>
+  <style>
+    :root{
+      --bg: #ffffff;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #3b82f6;
+      --arrow: #94a3b8;
+      --shadow: 0 12px 28px #02081714;
+    }
+    body{
+      margin:0; background:var(--bg); color:var(--text);
+      font-family: system-ui, sans-serif;
+      line-height:1.4; -webkit-font-smoothing: antialiased;
+      padding: 24px;
+    }
+
+    header{ max-width:1200px; margin:0 auto 18px; }
+    header h1{ font-size: clamp(20px, 2vw, 28px); margin:0 0 6px; }
+    header p{ margin:0; color:var(--muted); }
+
+    .flowchart{ position:relative; overflow:visible; }
+    .grid {
+      display: flex;
+      flex-direction: column;  /* stack pipelines in columns */
+      gap: 48px;
+      align-items: flex-start;
+    }
+
+    .pipeline_settings, .pipeline_preprocessing, .pipeline_model, .pipeline_analysis {
+      display: flex;
+      flex-direction: row;      /* left → right pipelines */
+      align-items: stretch;     /* all columns same height */
+      gap: 40px;                /* space between layers */
+    }
+
+    /* Each column */
+    .layer0, .layer1, .layer2, .layer3, .layer4 {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around; /* spreads nodes evenly vertically */
+      align-items: center;           /* horizontally center nodes */
+      gap: 25px;
+    }
+
+    /* CSS comment: defining node class (box structure)*/
+    .node{
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 18px 16px 16px;
+      position: relative;
+      cursor: pointer;
+      transition: transform .18s ease, box-shadow .18s ease;
+      outline: none;
+
+      width: 270px;       
+      white-space: normal;    /* allow wrapping */
+      word-break: break-word; /* force long words/IDs to break */
+      text-align: center;     /* keeps labels tidy */
+    }
+    .node:hover{ transform: translateY(-1px); }
+    .node:focus-visible{ outline:3px solid var(--accent); outline-offset:2px; }
+
+    .title{ font-weight:700; font-size:16px; margin:0 0 6px; }
+    .summary{ color:var(--muted); margin:0; }
+
+    .details{
+      margin-top:10px; color:var(--text);
+      max-height:0; overflow:hidden; opacity:0;
+      transition: max-height .28s ease, opacity .28s ease;
+    }
+    .node.expanded{ transform: scale(1.015); }
+    .node.expanded .details{ max-height: 400px; opacity:1; }
+
+    .tag{ position:absolute; top:10px; right:12px; font-size:12px;
+      background:#f6f3f8; color:#818181; border:1px solid #9c8fa3;
+      border-radius:999px; padding:3px 8px; }
+
+    .details .top-section{
+      margin-bottom:12px;
+    }
+
+    .input-output-section{
+      display:flex; gap:16px;
+    }
+
+    .io_column{
+      flex:1;
+      background:#f1f5f9;
+      border:1px solid var(--border);
+      border-radius:8px;
+      padding:8px;
+    }
+    .io_column h3{
+      margin:0 0 6px;
+      font-size:13px;
+      font-weight:600;
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+    }
+    .io_column ul{
+      margin:0; padding-left:18px;
+    }
+
+    svg.connectors{ position:absolute; inset:0; pointer-events:none; }
+    .legend{ margin-top:10px; color:var(--muted); font-size:13px; }
+    .legend .dot{ width:10px; height:10px; border-radius:50%; background:var(--arrow); display:inline-block; }
+    /* CSS comment: 
+        Node class  -> node coloring and encoding 
+            usecase: <article class="node node-green" id="node to be classified"> [enter] <h2 class="title">title text</h2> [enter] <p class="summary">shortened text</p> </article>
+        Text class  -> text coloring and encoding 
+            usecase: <span class="text-green">text that is green</span>
+    */
+    .data_transformation   { background:#ffffff; border:3px solid #4287ad;}
+    .spikedata_transformation   { background:#ffffff; border:3px solid #3d3e9e;}
+    .model_general    { background:#ffffff; border:3px solid #8a6e9a;}
+    .membrane_integration  { background:#ffffff; border:4px solid #682599;} 
+    .threshold_spike    { background:#ffffff; border:4px solid #82175e;}
+    .weights_update  { background:#ffffff; border:4px solid #6a1424;}
+    .biophase  { background:#ffffff; border:4px solid #943b2b;} 
+    .analytics    { background:#ffffff; border:3px solid #b48a2a;}
+    .greenforest    { background:#ffffff; border:3px solid #0e3a30;}
+    .inserts    { background:#ffffff; border:4px solid #214a0f;}
+    .technicals    { background:#ffffff; border:3px solid #707070;}
+
+
+    
+    .integrator_txt{ color: #682599; }
+    .integrator_helpers{ color: #9d5fc9; font-weight: bold;}
+    .threshold_txt { color: #82175e; }
+    .threshold_helpers { color: #c353ac; font-weight: bold;} 
+    .weights_txt { color: #6a1424; }
+    .weights_helpers { color: #c04a52; font-weight: bold;}
+    .observers_general { color: #2e2e2e}
+    .observers_dynamics { color: #402f4a}
+    .observers_statics { color: #312f4a}
+    .optional_parameters { color: #505050; font-weight: bold;}
+
+    /* PIPELINE MODEL CUSTOMIZATION OF LAYOUT*/
+    .pipeline_model .layer1,
+    .pipeline_model .layer2,
+    .pipeline_model .layer3,
+    .pipeline_model .layer4 {
+    justify-content: flex-start;   /* was: space-around */
+    }
+    /* Layer 1*/
+    #set_architecture {margin-top: 90px; } 
+    #set_rules { margin-top: 355px;}
+    #add_mod    { margin-top: 190px; margin-bottom: 10px; }  
+    #train {margin-top: 40px;}
+    /* Layer 2*/
+    #DenseTopology_Class {margin-top: 90px; } 
+    #set_synapse {margin-top: 174px;}
+    #Noise_apply {margin-top: 290px;}
+    #set_datacapture    {margin-top: 300px; }  
+    #get_network {margin-top: 40px;}
+    /* Layer 3*/
+    #wrapped_weights {margin-top: 60px; }
+    #LIFIntegrator_Class {margin-top: 15px; }
+    #DynamicsCapture_Class  {margin-top: 300px; } 
+    /* Layer 4*/
+    #ModeController_Class {margin-top: 430px;}
+    #TrainingMode_apply {margin-top: 2137px; }
+    
+
+    /* PIPELINE PREPROCESSING CUSTOMIZATION OF LAYOUT*/
+    .pipeline_preprocessing .layer2 {
+    justify-content: flex-start;   /* was: space-around */
+    }
+    #set_batching {margin-top: 60px; }
+
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PhasicNet</h1>
+    <p>Draft v. 24.10.2025.</p>
+  </header>
+
+  <div class="flowchart" id="flowchart">
+    <svg class="connectors" id="connectors" aria-hidden="true"></svg>
+    <div class="grid" id="grid">
+        <div class="pipeline_settings">     <!-- ___________________Pipeline____________________ -->
+            <!-- Layer 0 -->
+             <div class="layer0">
+                <article class="node technicals" id="Settings_Class" role="button" aria-expanded="false" aria-controls="Settings_Class-details">
+                    <h2 class="title">Settings Class</h2>
+                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                    <div class="details" id="Settings_Class-details">
+                        <div class="top-section">
+                            <p>DETAILS DETAILS DETAILS.</p>
+                        </div>
+                        <div class="input-output-section">
+                            <div class="io_column">
+                    <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                            <div class="io_column">
+                    <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                        </div>
+                    </div>
+                </article>
+            </div>
+
+            <!-- Layer 1 -->
+            <div class="layer1">
+                <article class="node technicals" id="configure" role="button" aria-expanded="false" aria-controls="configure-details">
+                    <h2 class="title">.configure()</h2>
+                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                    <div class="details" id="configure-details">
+                        <div class="top-section">
+                            <p>DETAILS DETAILS DETAILS.</p></div>
+                        <div class="input-output-section">
+                            <div class="io_column">
+                    <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                            <div class="io_column">
+                    <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                        </div>
+                    </div>
+                    </article>
+            </div>
+
+            <!-- Layer 2 -->
+            <div class="layer2">
+                <article class="node technicals" id="instantiate_configuration" role="button" aria-expanded="false" aria-controls="instantiate_configuration-details">
+                    <h2 class="title">.instantiate_configuration()</h2>
+                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                    <div class="details" id="instantiate_configuration-details">
+                        <div class="top-section">
+                            <p>DETAILS DETAILS DETAILS.</p></div>
+                        <div class="input-output-section">
+                            <div class="io_column">
+                    <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                            <div class="io_column">
+                    <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="node technicals" id="instantiate_logger" role="button" aria-expanded="false" aria-controls="instantiate_logger-details">
+                    <h2 class="title">.instantiate_logger()</h2>
+                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                    <div class="details" id="instantiate_logger-details">
+                        <div class="top-section">
+                            <p>DETAILS DETAILS DETAILS.</p></div>
+                        <div class="input-output-section">
+                            <div class="io_column">
+                    <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                            <div class="io_column">
+                    <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                        </div>
+                    </div>
+                </article>
+                <article class="node technicals" id="set_globalseed" role="button" aria-expanded="false" aria-controls="set_globalseed-details">
+                    <h2 class="title">.set_globalseed()</h2>
+                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                    <div class="details" id="set_globalseed-details">
+                        <div class="top-section">
+                            <p>DETAILS DETAILS DETAILS.</p></div>
+                        <div class="input-output-section">
+                            <div class="io_column">
+                    <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                            <div class="io_column">
+                    <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="node technicals" id="set_device" role="button" aria-expanded="false" aria-controls="set_device-details">
+                    <h2 class="title">.set_device()</h2>
+                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                    <div class="details" id="set_device-details">
+                        <div class="top-section">
+                            <p>DETAILS DETAILS DETAILS.</p></div>
+                        <div class="input-output-section">
+                            <div class="io_column">
+                    <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                            <div class="io_column">
+                    <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="node technicals" id="set_datatype" role="button" aria-expanded="false" aria-controls="set_datatype-details">
+                    <h2 class="title">.set_datatype()</h2>
+                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                    <div class="details" id="set_datatype-details">
+                        <div class="top-section">
+                            <p>DETAILS DETAILS DETAILS.</p></div>
+                        <div class="input-output-section">
+                            <div class="io_column">
+                    <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                            <div class="io_column">
+                    <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="node technicals" id="update_schema" role="button" aria-expanded="false" aria-controls="update_schema-details">
+                    <h2 class="title">.update_schema()</h2>
+                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                    <div class="details" id="update_schema-details">
+                        <div class="top-section">
+                            <p>DETAILS DETAILS DETAILS.</p></div>
+                        <div class="input-output-section">
+                            <div class="io_column">
+                    <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                            <div class="io_column">
+                    <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                        </div>
+                    </div>
+                </article>
+            </div> <!-- END layer 2 -->
+
+            <!-- Layer 3 -->
+            <div class="layer3">
+                <article class="node technicals" id="Configuration_Class" role="button" aria-expanded="false" aria-controls="Configuration_Class-details">
+                    <h2 class="title">Configuration class</h2>
+                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                    <div class="details" id="Configuration_Class-details">
+                        <div class="top-section">
+                            <p>DETAILS DETAILS DETAILS.</p></div>
+                        <div class="input-output-section">
+                            <div class="io_column">
+                                <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                            <div class="io_column">
+                                <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                        </div>
+                    </div>
+                </article>
+                
+                <article class="node technicals" id="Logger_Class" role="button" aria-expanded="false" aria-controls="Logger_Class-details">
+                    <h2 class="title">Logger class</h2>
+                    <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                    <div class="details" id="Logger_Class-details">
+                        <div class="top-section">
+                        <p>DAILS DETAILS DETAILS.</p></div>
+                        <div class="input-output-section">
+                            <div class="io_column">
+                                <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                            <div class="io_column">
+                                <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                        </div>
+                    </div>
+                </article>
+
+            </div> <!-- END layer3 -->
+        </div> <!-- END pipeline_settings -->
+
+
+      <div class="pipeline_preprocessing">     <!-- ___________________Pipeline____________________ -->
+        <!-- Layer 0 -->
+        <div class="layer0">
+            <article class="node data_transformation" id="Preprocessor_Class" role="button" aria-expanded="false" aria-controls="Preprocessor_Class-details">
+                <h2 class="title">Preprocessor class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="Preprocessor_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <!-- Layer 1 -->
+        <div class="layer1">
+            <article class="node data_transformation" id="normalize" role="button" aria-expanded="false" aria-controls="normalize-details">
+                <h2 class="title">.normalize()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="normalize-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node data_transformation" id="img_to_spike" role="button" aria-expanded="false" aria-controls="img_to_spike-details">
+                <h2 class="title">.img_to_spike()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="img_to_spike-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node data_transformation" id="add" role="button" aria-expanded="false" aria-controls="add-details">
+                <h2 class="title">.add()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="add-details">
+                    <div class="top-section">
+                        <p>DAILS DETAILS DETAILS.</p></div>
+                    <div class="input-output-section">
+                    <div class="io_column">
+                        <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                    <div class="io_column">
+                        <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node data_transformation" id="get_data" role="button" aria-expanded="false" aria-controls="get_data-details">
+                <h2 class="title">.get_data()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="get_data-details">
+                    <div class="top-section">
+                        <p>DAILS DETAILS DETAILS.</p></div>
+                    <div class="input-output-section">
+                    <div class="io_column">
+                        <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                    <div class="io_column">
+                    <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node data_transformation" id="generative_model" role="button" aria-expanded="false" aria-controls="generative_model-details">
+            <h2 class="title">.generative_model()</h2>
+            <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+            <div class="details" id="generative_model-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node data_transformation" id="dog" role="button" aria-expanded="false" aria-controls="dog-details">
+            <h2 class="title">.dog()</h2>
+            <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+            <div class="details" id="dog-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <!-- Layer 2 -->
+        <div class="layer2">
+            <article class="node data_transformation" id="set_batching" role="button" aria-expanded="false" aria-controls="set_batching-details">
+            <h2 class="title">.set_batching()</h2>
+            <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+            <div class="details" id="set_batching-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node data_transformation" id="add_noise" role="button" aria-expanded="false" aria-controls="add_noise-details">
+            <h2 class="title">.add_noise()</h2>
+            <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+            <div class="details" id="add_noise-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node data_transformation" id="add_breaks" role="button" aria-expanded="false" aria-controls="add_breaks-details">
+            <h2 class="title">.add_breaks()</h2>
+            <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+            <div class="details" id="add_breaks-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <!-- Layer 3 -->
+        <div class="layer3">
+            <article class="node data_transformation" id="wrapped_data" role="button" aria-expanded="false" aria-controls="wrapped_data-details">
+            <h2 class="title">[WRAPPED_DATA]</h2>
+            <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+            <div class="details" id="wrapped_data-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+      </div> <!-- END pipeline_preprocessing -->
+
+      <div class="pipeline_model">             <!-- ___________________Pipeline____________________ -->
+
+        <!-- Layer 0 -->
+        <div class="layer0">
+            <article class="node model_general" id="SNN_Class" role="button" aria-expanded="false" aria-controls="SNN_Class-details">
+                <h2 class="title">SNN Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="SNN_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <!-- Layer 1 -->
+        <div class="layer1">
+            <article class="node model_general" id="set_architecture" role="button" aria-expanded="false" aria-controls="set_architecture-details">
+                <h2 class="title">.set_architecture()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_architecture-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="set_rules" role="button" aria-expanded="false" aria-controls="set_rules-details">
+                <h2 class="title">.set_rules()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_rules-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="add_mod" role="button" aria-expanded="false" aria-controls="add_mod-details">
+                <h2 class="title">.add()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="add_mod-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="get_network" role="button" aria-expanded="false" aria-controls="get_network-details">
+                <h2 class="title">.get_network()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="get_network-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="plot_connectivity_matrix_mod" role="button" aria-expanded="false" aria-controls="plot_connectivity_matrix_mod-details">
+                <h2 class="title">.plot_connectivity_matrix()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="plot_connectivity_matrix_mod-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="get_node_degrees_mod" role="button" aria-expanded="false" aria-controls="get_node_degrees_mod-details">
+                <h2 class="title">.get_node_degrees()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="get_node_degrees_mod-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="plot_node_degrees_mod" role="button" aria-expanded="false" aria-controls="plot_node_degrees_mod-details">
+                <h2 class="title">.plot_node_degrees()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="plot_node_degrees_mod-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="get_architecture" role="button" aria-expanded="false" aria-controls="get_architecture-details">
+                <h2 class="title">.get_architecture()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="get_architecture-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="get_rules" role="button" aria-expanded="false" aria-controls="get_rules-details">
+                <h2 class="title">.get_rules()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="get_rules-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="train" role="button" aria-expanded="false" aria-controls="train-details">
+                <h2 class="title">.train()</h2>
+                <span class="tag">RUN</span>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="train-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+           
+            <article class="node inserts" id="Noise_apply" role="button" aria-expanded="false" aria-controls="Noise_apply-details">
+                <h2 class="title">Noise.apply()</h2>
+                <span class="tag">2.3</span>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="Noise_apply-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node analytics" id="DynamicsCapture_apply" role="button" aria-expanded="false" aria-controls="DynamicsCapture_apply-details">
+                <h2 class="title">DynamicsCapture.apply()</h2>
+                <span class="tag">2.8</span>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="DynamicsCapture_apply-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+        </div>
+
+        <!-- Layer 2 -->
+        <div class="layer2">
+            <article class="node model_general" id="DenseTopology_Class" role="button" aria-expanded="false" aria-controls="DenseTopology_Class-details">
+                <h2 class="title">DenseTopology Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="DenseTopology_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node membrane_integration" id="set_synapse" role="button" aria-expanded="false" aria-controls="set_synapse-details">
+                <h2 class="title">.set_synapse()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_synapse-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node membrane_integration" id="set_integrator" role="button" aria-expanded="false" aria-controls="set_integrator-details">
+                <h2 class="title">.set_integrator()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_integrator-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node threshold_spike" id="set_thresholds" role="button" aria-expanded="false" aria-controls="set_thresholds-details">
+                <h2 class="title">.set_thresholds()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_thresholds-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node weights_update" id="set_plasticity" role="button" aria-expanded="false" aria-controls="set_plasticity-details">
+                <h2 class="title">.set_plasticity()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_plasticity-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node biophase" id="set_phaserules" role="button" aria-expanded="false" aria-controls="set_phaserules-details">
+                <h2 class="title">.set_phaserules()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_phaserules-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+           
+
+            <article class="node inserts" id="add_noise_mod" role="button" aria-expanded="false" aria-controls="add_noise_mod-details">
+                <h2 class="title">.add_noise()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="add_noise_mod-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node analytics" id="set_datacapture" role="button" aria-expanded="false" aria-controls="set_datacapture-details">
+                <h2 class="title">.set_datacapture()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_datacapture-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node technicals" id="set_mode" role="button" aria-expanded="false" aria-controls="set_mode-details">
+                <h2 class="title">.set_mode()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_mode-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article> 
+            <article class="node technicals" id="set_device_mod" role="button" aria-expanded="false" aria-controls="set_device_mod-details">
+                <h2 class="title">.set_device()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_device_mod-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="update_schema_mod" role="button" aria-expanded="false" aria-controls="update_schema_mod-details">
+                <h2 class="title">.update_schema()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="update_schema_mod-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="set_epochs" role="button" aria-expanded="false" aria-controls="set_epochs-details">
+                <h2 class="title">.set_epochs()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_epochs-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="set_batching_mod" role="button" aria-expanded="false" aria-controls="set_batching_mod-details">
+                <h2 class="title">.set_batching()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_batching_mod-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="set_test_train" role="button" aria-expanded="false" aria-controls="set_test_train-details">
+                <h2 class="title">.set_test_train()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_test_train-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="set_validation_folds" role="button" aria-expanded="false" aria-controls="set_validation_folds-details">
+                <h2 class="title">.set_validation_folds()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_validation_folds-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="step" role="button" aria-expanded="false" aria-controls="step-details">
+                <h2 class="title">.step()</h2>
+                <span class="tag">1.</span>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="step-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <!-- Layer 3 -->
+        <div class="layer3">
+            <article class="node model_general" id="set_nodes" role="button" aria-expanded="false" aria-controls="set_nodes-details">
+                <h2 class="title">.set_nodes()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_nodes-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="set_connectivity" role="button" aria-expanded="false" aria-controls="set_connectivity-details">
+                <h2 class="title">.set_connectivity()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_connectivity-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node model_general" id="set_weights" role="button" aria-expanded="false" aria-controls="set_weights-details">
+                <h2 class="title">.set_weights()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="set_weights-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+            
+            <article class="node membrane_integration" id="BaseSynapse_Class" role="button" aria-expanded="false" aria-controls="BaseSynapse_Class-details">
+                <h2 class="title">BaseSynapse Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="BaseSynapse_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node membrane_integration" id="LIFIntegrator_Class" role="button" aria-expanded="false" aria-controls="LIFIntegrator_Class-details">
+                <h2 class="title">LIFIntegrator Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="LIFIntegrator_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node threshold_spike" id="AdaptiveThreshold_Class" role="button" aria-expanded="false" aria-controls="AdaptiveThreshold_Class-details">
+                <h2 class="title">AdaptiveThreshold Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="AdaptiveThreshold_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node weights_update" id="STDPPlasticity_Class" role="button" aria-expanded="false" aria-controls="STDPPlasticity_Class-details">
+                <h2 class="title">STDPPlasticity Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="STDPPlasticity_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node biophase" id="HomeostaticSleep_Class" role="button" aria-expanded="false" aria-controls="HomeostaticSleep_Class-details">
+                <h2 class="title">HomeostaticSleep Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="HomeostaticSleep_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node inserts" id="Noise_Class" role="button" aria-expanded="false" aria-controls="Noise_Class-details">
+                <h2 class="title">Noise Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="Noise_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node analytics" id="DynamicsCapture_Class" role="button" aria-expanded="false" aria-controls="DynamicsCapture_Class-details">
+                <h2 class="title">DynamicsCapture Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="DynamicsCapture_class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+
+            <article class="node technicals" id="TrainingMode_Class" role="button" aria-expanded="false" aria-controls="TrainingMode_Class-details">
+                <h2 class="title">TrainingMode Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="TrainingMode_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+
+            <article class="node technicals" id="ModeController_Class" role="button" aria-expanded="false" aria-controls="ModeController_Class-details">
+                <h2 class="title">ModeController Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="ModeController_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node biophase" id="PhaseController_Class" role="button" aria-expanded="false" aria-controls="PhaseController_Class-details">
+                <h2 class="title">PhaseController Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="PhaseController_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node technicals" id="DataLoader_Class" role="button" aria-expanded="false" aria-controls="DataLoader_Class-details">
+                <h2 class="title">DataLoader Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="DataLoader_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p></div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                        <div class="io_column">
+                <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node membrane_integration" id="BaseSynapse_step" role="button" aria-expanded="false" aria-controls="BaseSynapse_step-details">
+                <h2 class="title">BaseSynapse.step()</h2>
+                <span class="tag">2.5</span>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="LIFIntegrator_step-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node membrane_integration" id="LIFIntegrator_step" role="button" aria-expanded="false" aria-controls="LIFIntegrator_step-details">
+                <h2 class="title">LIFIntegrator.step()</h2>
+                <span class="tag">2.6</span>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="LIFIntegrator_step-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node threshold_spike" id="AdaptiveThreshold_step" role="button" aria-expanded="false" aria-controls="AdaptiveThreshold_step-details">
+                <h2 class="title">AdaptiveThreshold.step()</h2>
+                <span class="tag">2.7</span>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="AdaptiveThreshold_step-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node weights_update" id="STDPPlasticity_step" role="button" aria-expanded="false" aria-controls="STDPPlasticity_step-details">
+                <h2 class="title">STDPPlasticity.step()</h2>
+                <span class="tag">2.8</span>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="STDPPlasticity_step-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <!-- Layer 4 -->
+        <div class="layer4">
+
+
+            <article class="node technicals" id="TrainingMode_apply" role="button" aria-expanded="false" aria-controls="TrainingMode_apply-details">
+                <h2 class="title">TrainingMode.apply_*()</h2>
+                <span class="tag">2.1</span>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="TrainingMode_apply-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node biophase" id="HomeostaticSleep_apply" role="button" aria-expanded="false" aria-controls="HomeostaticSleep_apply-details">
+                <h2 class="title">HomeostaticSleep.apply_*()</h2>
+                <span class="tag">2.2</span>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="HomeostaticSleep_apply-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node technicals" id="load_data" role="button" aria-expanded="false" aria-controls="load_data-details">
+                <h2 class="title">.load_data()</h2>
+                <span class="tag">2.3</span>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="load_data-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p></div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul></div>
+                        <div class="io_column">
+                <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul></div>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+      </div> <!-- END pipeline_model -->
+      
+      
+      <div class="pipeline_analysis">          <!-- ___________________Pipeline____________________ -->
+        <!-- Layer 0 -->
+        <div class="layer0">
+            <article class="node analytics" id="Analysis_Class" role="button" aria-expanded="false" aria-controls="Analysis_Class-details">
+                <h2 class="title">Analysis Class</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="Analysis_Class-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <!-- Layer 1 -->
+        <div class="layer1">
+            <article class="node analytics" id="get_experiment_info" role="button" aria-expanded="false" aria-controls="get_experiment_info-details">
+                <h2 class="title">.get_experiment_info()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="get_experiment_info-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node analytics" id="plot_connectivity_matrix" role="button" aria-expanded="false" aria-controls="plot_connectivity_matrix-details">
+                <h2 class="title">.plot_connectivity_matrix()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="plot_connectivity_matrix-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node analytics" id="plot_node_degrees" role="button" aria-expanded="false" aria-controls="plot_node_degrees-details">
+                <h2 class="title">.plot_node_degrees()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="plot_node_degrees-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node analytics" id="get_node_degrees" role="button" aria-expanded="false" aria-controls="get_node_degrees-details">
+                <h2 class="title">.get_node_degrees()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="get_node_degrees-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+            <article class="node analytics" id="get_weighted_membranes" role="button" aria-expanded="false" aria-controls="get_weighted_membranes-details">
+                <h2 class="title">.get_weighted_membranes()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="get_weighted_membranes-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <!-- Layer 2 -->
+        <div class="layer2">
+            <article class="node analytics" id="timestep_bin" role="button" aria-expanded="false" aria-controls="timestep_bin-details">
+                <h2 class="title">.timestep_bin()</h2>
+                <p class="summary">SUMMARY SUMMARY SUMMARY</p>
+                <div class="details" id="timestep_bin-details">
+                    <div class="top-section">
+                        <p>DETAILS DETAILS DETAILS.</p>
+                    </div>
+                    <div class="input-output-section">
+                        <div class="io_column">
+                            <h3>Inputs</h3><ul><li>input_1</li><li>input_2</li><li>input_3</li></ul>
+                        </div>
+                        <div class="io_column">
+                            <h3>Outputs</h3><ul><li>output_1</li><li>output_2</li><li>output_3</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </div>
+      </div> <!-- END pipeline_analysis -->
+
+    </div> <!-- END GRID -->
+  </div> <!-- END FLOWCHART -->
+
+  <script>
+    const EDGES = [
+        ["Settings_Class", "configure"], 
+        ["configure", "instantiate_configuration"], ["configure", "instantiate_logger"], ["configure", "set_globalseed"], ["configure", "set_device"], ["configure", "set_datatype"], ["configure", "update_schema"],
+
+        ["Preprocessor_Class", "normalize"], ["Preprocessor_Class", "img_to_spike"], ["Preprocessor_Class", "add"], ["Preprocessor_Class", "get_data"], ["Preprocessor_Class", "dog"], 
+        ["normalize", "set_batching"], ["img_to_spike", "set_batching"], ["add", "add_noise"], ["add", "add_breaks"],
+        ["set_batching", "wrapped_data"], ["add_noise", "wrapped_data"], ["add_breaks", "wrapped_data"],
+
+        ["SNN_Class", "set_architecture"], ["SNN_Class", "set_rules"], ["SNN_Class", "add_mod"], ["SNN_Class", "get_network"], ["SNN_Class", "get_architecture"], ["SNN_Class", "get_rules"], ["SNN_Class", "plot_connectivity_matrix_mod"], ["SNN_Class", "get_node_degrees_mod"], ["SNN_Class", "plot_node_degrees_mod"], ["SNN_Class", "train"],
+        ["set_architecture", "DenseTopology_Class"], ["DenseTopology_Class", "set_nodes"], ["DenseTopology_Class", "set_connectivity"], ["DenseTopology_Class", "set_weights"], 
+        ["set_rules", "set_synapse"], ["set_rules", "set_integrator"], ["set_rules", "set_thresholds"], ["set_rules", "set_plasticity"], ["set_rules", "set_phaserules"], ["set_mode", "TrainingMode_Class"], ["add_mod", "add_noise_mod"],
+        ["set_connectivity", "wrapped_weights"], ["set_weights", "wrapped_weights"],
+        ["set_synapse", "BaseSynapse_Class"], ["set_integrator", "LIFIntegrator_Class"], ["set_thresholds", "AdaptiveThreshold_Class"], ["set_plasticity", "STDPPlasticity_Class"], ["set_phaserules", "HomeostaticSleep_Class"], ["add_noise_mod", "Noise_Class"], ["set_datacapture", "DynamicsCapture_Class"],
+        ["ModeController_Class", "TrainingMode_apply"], ["PhaseController_Class", "HomeostaticSleep_apply"],["DataLoader_Class", "load_data"], ["LIFIntegrator_step", "integrate_membrane"], ["AdaptiveThreshold_step", "update_threshold"], ["AdaptiveThreshold_step", "emit_spikes"], ["STDPPlasticity_step", "update_weights"], 
+
+        ["train", "set_datacapture"], ["train", "set_mode"], ["train", "set_device_mod"], ["train", "update_schema_mod"], ["train", "set_epochs"], ["train", "set_batching_mod"], ["train", "set_test_train"], ["train", "set_validation_folds"], ["train", "step"], 
+        ["Noise_apply", "step"], ["DynamicsCapture_apply", "step"],
+        ["step", "ModeController_Class"], ["step", "PhaseController_Class"], ["step", "DataLoader_Class"], ["step", "BaseSynapse_step"], ["step", "LIFIntegrator_step"], ["step", "AdaptiveThreshold_step"], ["step", "STDPPlasticity_step"], 
+        ["Analysis_Class", "get_experiment_info"], ["Analysis_Class", "plot_connectivity_matrix"], ["Analysis_Class", "plot_node_degrees"], ["Analysis_Class", "get_node_degrees"], ["Analysis_Class", "plot_node_degrees"], ["Analysis_Class", "get_weighted_membranes"],  
+
+    ];
+
+    const SINGLE_EXPAND = false;    // JS COMMENT "NOTE" - allow for immediate collapse
+    const flowchart = document.getElementById('flowchart');
+    const grid = document.getElementById('grid');
+    const svg = document.getElementById('connectors');
+    const NS = 'http://www.w3.org/2000/svg';
+
+    function ensureCircle() {
+      let defs = svg.querySelector('defs');
+      if (!defs) {
+        defs = document.createElementNS(NS, 'defs');
+        svg.appendChild(defs);
+      }
+
+      let marker = svg.querySelector('#circle');
+      if (!marker) {
+        marker = document.createElementNS(NS, 'marker');
+        marker.setAttribute('id', 'circle');
+        marker.setAttribute('markerWidth', '6');
+        marker.setAttribute('markerHeight', '6');
+        marker.setAttribute('refX', '3');   // centers circle at line end
+        marker.setAttribute('refY', '3');
+        marker.setAttribute('orient', 'auto');
+        marker.setAttribute('markerUnits', 'strokeWidth');
+
+        const circ = document.createElementNS(NS, 'circle');
+        circ.setAttribute('cx', '3');
+        circ.setAttribute('cy', '3');
+        circ.setAttribute('r', '2.5');
+        circ.setAttribute('fill', 'black');   // solid black
+        marker.appendChild(circ);
+
+        defs.appendChild(marker);
+      }
+    }
+
+
+    function drawConnectors(){
+      const rect = flowchart.getBoundingClientRect();
+      svg.setAttribute('viewBox', `0 0 ${flowchart.clientWidth} ${flowchart.clientHeight}`);
+      svg.setAttribute('width', flowchart.clientWidth);
+      svg.setAttribute('height', flowchart.clientHeight);
+      svg.querySelectorAll('path.edge').forEach(p => p.remove());
+      ensureCircle();
+
+      EDGES.forEach(([fromId, toId]) => {
+        const a = document.getElementById(fromId);
+        const b = document.getElementById(toId);
+        if (!a || !b) return;
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        const startX = ar.right - rect.left;
+        const startY = ar.top + ar.height/2 - rect.top;
+        const endX   = br.left - rect.left;
+        const endY   = br.top + br.height/2 - rect.top;
+        const midX   = (startX + endX) / 2;
+
+        const path = document.createElementNS(NS, 'path');
+        path.classList.add('edge');
+        path.setAttribute('d', `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', 'black');        // force black stroke
+        path.setAttribute('stroke-width', '1.5');   
+        path.setAttribute('marker-end', 'url(#circle)'); // arrowhead 
+        svg.appendChild(path);
+      });
+    }
+
+    function collapseAll(except){
+      if (!SINGLE_EXPAND) return;
+      document.querySelectorAll('.node.expanded').forEach(n => {
+        if (n !== except) {
+          n.classList.remove('expanded');
+          n.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+
+    function toggleNode(el){
+      const willExpand = !el.classList.contains('expanded');
+      if (willExpand) collapseAll(el);
+      el.classList.toggle('expanded');
+      el.setAttribute('aria-expanded', String(willExpand));
+      drawConnectors();
+      if (willExpand) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+
+    document.querySelectorAll('.node').forEach(el => {
+      el.addEventListener('click', () => toggleNode(el));
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleNode(el); }
+      });
+    });
+
+    window.addEventListener('resize', drawConnectors);
+    window.addEventListener('load', drawConnectors);
+    new ResizeObserver(drawConnectors).observe(grid);
+  </script>
+</body>
+</html>
