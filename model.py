@@ -85,7 +85,7 @@ class ThresholdCfg:
     v_th: float         # default threshold
     dt: Optional[float] = None  ###SHOULD MOVE TO SNNCfg
     tau_th: Optional[float] = None
-    inc_tau: Optional[float] = None
+    adpt_tau: Optional[float] = None
 
 """@dataclass(frozen=True)
 class PlasticityCfg: ## Should all be float? Possibly FLOAT32?
@@ -213,7 +213,7 @@ class AdaptiveThreshold:
         self.v_reset = cfg.v_reset
         self.v_th = cfg.v_th   #Default threshold in adaptive case
         self.dt_tau = cfg.dt/cfg.tau_th ## NOTE
-        self.inc_th = cfg.inc_th
+        self.adpt_th = cfg.adpt_th  ##Threshold adaption
 
 
     def step(self, state: NeuronalState, upd: UpdateState) -> None:
@@ -221,7 +221,7 @@ class AdaptiveThreshold:
         Adaptive threshold update:  
         Euler Decay:              dV_th ← (v_th - V_th) * τ_threshold
         Euler Decay code:   upd.dV_th = (self.v_th - state.V_th) * self.τ_threshold 
-        Spikeadaption:          upd.dV_th + self.inc_th  #adaption increment on spike
+        Spikeadaption:          upd.dV_th + self.adpt_th  #adaption increment on spike
         """
         # Threshold decay for all neurons
         np.subtract(self.v_th, state.V_th, out=upd.dV_th)
@@ -230,8 +230,8 @@ class AdaptiveThreshold:
         #Emit spikes
         np.greater_equal(state.V, state.V_th, out=upd.Spiking)
 
-        #Spike adaption to spiking neurons
-        upd.dV_th[upd.Spiking] += self.inc_th
+        #Spike adaption to spiking neurons  ###EDIT TO MORE EFFICIENT VARIANT (more efficient than array[...])
+        upd.dV_th[upd.Spiking] += self.adpt_th
 
         ###Neat pytorch version for later: upd.dV_th.add_(upd.Spiking.to(upd.dV_th.dtype), alpha=self.th_adaption)
         #### NOTE MEMBRANE V RESET NOT APPLIED. This is left to the orchestrator
@@ -343,6 +343,9 @@ class SNN:
         self.plasticity_class = None
         self.noise_class = None
         self.phase_class = None
+        self.synapticstate_class = None
+        self.neuronalstate_class = None
+        self.updatestate_class = None
         #Runtime Instatiated class holders
         self.dataloader = None        
         self.synapse = None
@@ -355,8 +358,8 @@ class SNN:
         self.topologycfg = None
         self.runtimecfg = None
         # States,        Dataclasses for dynamic parameters
-        self.syn_state = None
-        self.neur_state = None
+        self.syn = None
+        self.neur = None
         self.upd = None
         # Data and randomseed
         self.data = None
@@ -365,36 +368,41 @@ class SNN:
 #    def set_integrator(self, integrator_class) -> None:
 #        self.integrator_class = integrator_class
 
+    def set_integrator(self, integrator_class) -> None:
+        self.integrator_class = integrator_class
+
     def set_threshold(self, threshold_class) -> None:
         self.threshold_class = threshold_class
 
     def instantiate_rules(self) -> None:
+        if self.integrator_class is None:
+            raise RuntimeError("Can't instantiate an integrator object without storing an integrator class first.")
         if self.threshold_class is None:
-            raise RuntimeError("Threshold class not set. Call set_threshold(...).")
+            raise RuntimeError("Can't instantiate an threshold object without storing an threshold class first.")
         self.integrator = self.integrator_class(self.runtimecfg.integratorcfg)
         self.threshold = self.threshold_class(self.runtimecfg.thresholdcfg)
 
-    def step(self, input, neur, syn, upd):
+    def step(self, input):
         # Load data(time_step) -> input nodes in Spikes array
-#        self.dataloader.step(self, input, neur)
+#        self.dataloader.step(input, self.neur)
 
         # W @ Spikes -> I summed per neuron
-#        self.synapse.step(self, neur, syn, upd)
+#        self.synapse.step(self.neur, self.syn, self.upd)
 
         # Integrate membrane -> dV per neuron
-        self.integrator.step(self, neur, upd)
-        self.neur_state.V += self.upd.dV #Update internal state array
+        self.integrator.step(self.neur, self.upd)
+        self.neur.V += self.upd.dV #Update internal state array
         
         # (Update) threshold and 
-        self.threshold.step(self, neur, upd)
-        self.neur_state.V_th += self.upd_state.dV_th ## ONLY if adaptive threshold in use. Else: V_th = None and dV_th = None
-        self.neur_state.Spikes = self.upd_state.Spiking
 
-#        self.plasticity.step(self, neur, syn, upd)
-#        self.syn_state.W += self.upd_state.dW
+        self.threshold.step(self.neur, self.upd)
+        if self.neur.V_th is not None and self.upd.dV_th is not None:
+            self.neur.V_th += self.upd.dV_th       ## ONLY if adaptive threshold in use. Else: V_th = None and dV_th = None
+            ###NOTE possible error: what if ONE of the arrays are not NONE? THEN: quiet, static threshold -> sol1. add warning, sol2. automatic recording  
+        self.neur.Spikes = self.upd.Spiking
 
-
-    
+#        self.plasticity.step(self.neur, self.syn, self.upd)
+#        self.syn.W += self.upd.dW
 
 
 
