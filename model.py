@@ -405,9 +405,15 @@ class SNN:
 #        self.syn.W += self.upd.dW
 
 
+###### INPUTS: Spikearray (T, N_ins), 
+#       N_in = Electricity_sources/input neurons = W * H * C = Widt_pixel * Height_pixel * (colour) Channels, 
+#          T = T_total/dt = timesteps
 
-
-
+"""
+Source for pyYAML & JSON :
+https://python.land/data-processing/python-yaml#Installing_and_importing_PyYAML
+# Add encoding to ensure æøå in YAML?
+"""
 thresholdcfg_test = ThresholdCfg(v_reset=-90, v_th=-55)
 integratorcfg_test = IntegratorCfg(dt=1, tau_mem=20, v_rest=-70, r=10)
 runtimecfg_test = RuntimeCfg(integratorcfg_test,thresholdcfg_test)
@@ -417,8 +423,30 @@ snn_test = SNN()
 snn_test.set_threshold(AdaptiveThreshold)
 print(snn_test.threshold_class)
 
+with open('runtimecfg.yaml', 'w') as file:
+    yaml.dump(asdict(runtimecfg_test), file)
+
+with open('runtimecfg.yaml', 'r') as file:
+    runtimecfg_test2 = yaml.safe_load(file)
+
+print(runtimecfg_test2)
+print(type(runtimecfg_test2))  ##Dict
 
 
+with open("runtimecfg.yaml", "r") as file:
+    loaded_dict = yaml.safe_load(file) ##NOTE This can be a quiet object in runtime
+
+
+runtimecfg_test3 = RuntimeCfg(
+    integratorcfg = IntegratorCfg(**loaded_dict["integratorcfg"]),
+    thresholdcfg = ThresholdCfg(**loaded_dict["thresholdcfg"]))
+
+print(runtimecfg_test3)
+print(type(runtimecfg_test3))  # <class '__main__.RuntimeCfg'>
+
+print(runtimecfg_test)
+print(type(runtimecfg_test))
+print(type(loaded_dict["thresholdcfg"]["tau_th"])) # <class 'NoneType'> 
 
 
 """
