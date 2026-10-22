@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+cs_temp/
+
+# Data and experiment outputs
+datasets/
+networks/
+runs/
+
+# Environment files
+.env
+.env.*
