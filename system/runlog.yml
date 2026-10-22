@@ -1,0 +1,66 @@
+#runlog.yml -- PhasicNet's logging config, read ONCE per process by runlog.setup_logging() (phasicnet.py calls it).
+# Base: the 2-stderr-json-file config, without the queue handler; the files are PER RUN (run_handlers, in the run folder); a `results` logger.
+version: 1
+disable_existing_loggers: false       # keep the loggers every file made at import (logger = logging.getLogger(__name__)); true would silence them
+formatters:
+  simple:
+    format: '%(levelname)s [%(module)s:L%(lineno)d]: %(message)s'
+    datefmt: '%Y-%m-%dT%H:%M:%S%z'
+  json:
+    (): runlog.MyJSONFormatter
+    fmt_keys:
+      level: levelname
+      message: message
+      timestamp: timestamp
+      logger: name
+      module: module
+      function: funcName
+      line: lineno
+      thread_name: threadName
+filters:
+  results:
+    name: results                     # the built-in name filter: only records of the `results` logger
+handlers:
+  stderr:                             # the console. For interactive work set level: INFO.
+    class: logging.StreamHandler
+    level: WARNING
+    formatter: simple
+    stream: ext://sys.stderr
+run_handlers:                         # NOT read by dictConfig (it skips keys it does not know): runlog.open_run_log() opens these IN THE RUN FOLDER
+  run:                                # every record that passes the levels under loggers:
+    class: logging.handlers.RotatingFileHandler
+    filename: run.jsonl
+    level: DEBUG
+    formatter: json
+    maxBytes: 100_000_000             # safety valve: a runaway DEBUG loop cannot fill the disk
+    backupCount: 3                    #   then run.jsonl.1 .. run.jsonl.3, and the oldest goes
+  results:                            # only the `results` logger: per epoch, per fold, test, the run status
+    class: logging.FileHandler
+    filename: results.jsonl
+    level: INFO
+    formatter: json
+    filters: [results]
+loggers:
+  root:
+    level: INFO                       # DEBUG here puts every debug line into run.jsonl as well
+    handlers:
+    - stderr
+  results:
+    level: INFO
+  # a level per file (the logger name = the file name). INFO = in run.jsonl; WARNING = only problems.
+  # Any file not listed follows root (INFO).
+  # technicals (how the network is built and stored): quiet during runs
+  builder: {level: WARNING}
+  network: {level: WARNING}
+  cfg: {level: WARNING}
+  states: {level: WARNING}
+  freeze: {level: WARNING}
+  synapticindex: {level: WARNING}
+  # run-to-run (what a run does and how far it is)
+  phasicnet: {level: INFO}
+  protocols: {level: INFO}
+  operations: {level: INFO}
+  run: {level: INFO}
+  checkpoint: {level: INFO}
+  datahandler: {level: INFO}
+  parallel: {level: INFO}

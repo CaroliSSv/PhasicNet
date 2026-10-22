@@ -1,0 +1,156 @@
+# default_config.yaml - reference configuration for PhasicNet.
+#
+# THREE INDEPENDENT LAYERS, deliberately not merged. Each answers a different question and each is
+# hashed separately, so a change in one does not invalidate the identity of the others:
+#
+#   settings   WHAT SYSTEM runs it   seed, array backend, dense/sparse, data policy   -> rng_spec
+#   cfg        WHAT MODEL it is      physics: taus, thresholds, STDP                  -> cfg_id
+#   runcfg     WHAT RUN it was       epochs, folds, checkpoint + scorer policy        -> run_id
+#
+# Values below are BIOLOGICALLY PLAUSIBLE defaults for a cortical-style rate-coded network, with
+# the source of each convention named. They are a starting point, not a tuned model: the drive
+# (integrator.r) in particular must be sized to your input statistics, because a delta-current
+# synapse moves V by w*r*dt/tau per spike and that depends on how many inputs you have and how
+# often they fire. main/main.py shows one working sizing.
+
+settings:
+    globalseed: 7
+    np_bitgenerator: PCG64
+
+    backend:
+        # numpy only today. torch is the planned GPU path.
+        array_backend: numpy
+        # dense  = (n_post, n_total) W + syn_mask. The verified baseline.
+        # sparse = COO edge list, no syn_mask. Wins below ~5-8% connectivity; LOSES above it
+        #          (gather/scatter overhead), so dense is the default.
+        weights: dense
+        # timestep = every edge every step.
+        # event    = only edges with a spiking endpoint. Bit-identical for pair-based STDP.
+        #            Wins below ~7-10% activity per step; loses above it.
+        update: timestep
+        # Per-step multiplicative decay of W, applied lazily on next touch under "event".
+        # 0.0 = none (the current model). Nonzero is NOT bit-identical between update modes.
+        weight_decay: 0.0
+
+    data:
+        # The test set is cut ONCE per dataset and reused by every trial, so trials are comparable
+        # and TEST cannot leak by accumulation across a sweep.
+        make_test_split: true
+        test_fraction: 0.20
+        # Stratify every split. An unstratified split of an imbalanced set silently changes what a
+        # fold measures without changing any code.
+        stratify: true
+        warn_seconds: 60.0
+
+cfg:
+    simulation:
+        # 1 ms is the standard SNN timestep: long enough to be cheap, short enough that at most one
+        # spike per neuron per step is a fair approximation.
+        dt: 1.0
+
+    synapse:
+        # Per-synapse bias. null = none.
+        b: null
+
+    integrator:
+        # Cortical pyramidal membrane time constant is 10-30 ms; 20 is the usual choice.
+        tau_mem: 20.0
+        # Resting potential, mV. -65 is standard for a cortical LIF.
+        v_rest: -65.0
+        # Membrane resistance. NOT a biological constant here: with delta-current synapses this is
+        # the knob that converts "a weight" into "a mV kick", so it must be sized to the input
+        # statistics. V_inf = v_rest + r*I; pick r so a typical input pattern puts V_inf above v_th.
+        r: 60.0
+
+    threshold:
+        # Threshold -54 mV against rest -65 gives an 11 mV gap: standard cortical LIF.
+        v_th: -54.0
+        # Reset to rest (not below) -- the common convention outside models needing hyperpolarisation.
+        v_reset: -65.0
+        # Adaptive threshold (homeostasis). tau_th long relative to tau_mem so it integrates over
+        # many spikes; adpt_th is the per-spike bump. Together they stop one neuron winning every
+        # input. Diehl & Cook use tau=1e7 ms; 100 ms here suits short presentations.
+        tau_th: 100.0
+        adpt_th: 0.4
+        # Absolute refractory period, ms. RefractoryAdaptiveThreshold only; null = none.
+        # Cortical values are 2-5 ms. Without it, firing rate is bounded only by the V climb.
+        t_refrac: null
+
+    plasticity:
+        # Pair-based STDP, additive, hard-bounded -- the rule in Brian2's STDP example (after Song,
+        # Miller & Abbott 2000). tau_pre = tau_post = 20 ms is that example's value and matches the
+        # measured STDP window width.
+        tau_pretrace: 20.0
+        tau_posttrace: 20.0
+        # A_ltd slightly GREATER than A_ltp gives a net depression bias, which is what keeps an
+        # additive rule from running away to the upper bound. Song et al. use ~1.05x.
+        A_ltp: 0.010
+        A_ltd: 0.0105
+        # Per-presynaptic-population learning rates. eta_inh is sign-flipped inside TraceSTDP.
+        eta_exc: 1.0
+        eta_inh: 1.0
+        # Hard bounds. Dale's law is enforced per SIGN at runtime, so w_min applies to inhibitory
+        # columns and w_max to excitatory ones.
+        w_min: -6.0
+        w_max: 6.0
+        # Projection rectangles that must NOT learn. Keywords: all | input | inh | exc, optionally
+        # prefixed pre_/post_ (pre_inh, post_exc, ...), or a synapse-group name.
+        # ("inh",) freezes the lateral circuit, which is the usual choice for unsupervised STDP.
+        freeze: ["inh"]
+
+    noise:
+        # Membrane noise, mV per step. A small nonzero value breaks ties between identical neurons
+        # and is closer to a real membrane than perfect determinism.
+        mu_mem: 0.0
+        sigma_mem: 0.2
+
+    phases:
+        -   phase_type: DEFAULT     ##CHANGED 22.10 (1.1): was phase_name
+            dataloader_active: true
+            trigger_mode: all
+            triggers: {}
+            exit_triggers: null
+
+runcfg:
+    # Epochs CONTINUE the same model; only a fold resets it.
+    epochs: 3
+    # k_fold > 1 uses stratified k-fold; val_split is the single-holdout alternative. Trial score
+    # is the MEAN over folds, never the max -- maxing reports the luckiest split.
+    k_fold: 2
+    val_split: null
+    batch: null
+    # Stop a fold after this many epochs without improvement. A COLLAPSE always stops immediately
+    # regardless, because a collapsed network cannot recover and would burn the remaining epochs.
+    patience: 2
+
+checkpoint:
+    # best | last | both | none
+    mode: best
+    greater_is_better: true
+    keep_last: 1
+    # A new best must beat the old by MORE than this. Guards against churn on noise.
+    min_delta: 0.0
+    every_n_epochs: 0
+    on_collapse: true
+    restore_best_at_end: true
+    # Write the best snapshot to runs/TrainedModel_<run_id> on improvement. Only the best is
+    # written, never the keep_last churn.
+    to_disk: true
+
+scorer:
+    # Tier 2, model selection: Calinski-Harabasz (Variance Ratio Criterion) on val spike counts.
+    selection: vrc
+    # Tier 1, cheap data-free health probes. A run tripping any of these is treated as collapsed.
+    silent_frac_max: 0.90
+    saturated_frac_max: 0.50
+    rate_hz_max: 500.0
+    rate_hz_min: 0.01
+
+history:
+    record_spikes: true
+    # Input nodes carry the DRIVE, not a response. Off by default so a raster shows the network.
+    include_input: false
+    record_phase: true
+    record_epoch: true
+    record_datarun: true
+    chunk_events: 65536
