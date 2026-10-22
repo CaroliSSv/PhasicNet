@@ -13,13 +13,14 @@ env/
 .vscode/
 .idea/
 
-# Temporary files
-cs_temp/
-
 # Data and experiment outputs
-datasets/
 networks/
-runs/
+/runs/
+/datasets/
+/exports/
+/cs_temp/
+
+__pycache__/
 
 # Environment files
 .env
