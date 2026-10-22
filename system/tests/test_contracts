@@ -1,0 +1,255 @@
+#test_contracts -- WHY THIS FILE EXISTS:
+# Every bug found in the last refactor was one of two kinds, and NOTHING in the suite catches either:
+#
+#   1. COORDINATE-SPACE slips. Arrays are NEURON space (n_total) or post side (pnet.network.n_post), and
+#      under post_offset=False the two are EQUAL -- so a wrong space runs fine, passes every test,
+#      and only breaks when someone turns the offset on months later. Worse: post_spike[...] = Spikes was
+#      silently giving input nodes a postsynaptic trace in the UNCOMPRESSED path, where it never
+#      raised at all. Shapes are the only thing that can state this contract, so they are asserted.
+#
+#   2. WRITE-SET violations. Every runtime module DECLARES `writes`, and the docstrings promise it
+#      "writes ONLY to UpdateState arrays named in self.writes" -- but nothing ever checked. A module
+#      that quietly mutates neur.V or another module's buffer produces wrong numbers, not an error,
+#      and the plug-and-play claim is exactly the claim that this cannot happen.
+#
+# These are the two invariants the architecture RESTS on, so they get asserted rather than assumed.
+# Run: pytest test_contracts.py -q
+from __future__ import annotations
+import dataclasses
+import numpy as np
+import pytest
+
+from model import PhasicNet
+from experiment import Experiment
+from cfg import (Cfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
+                 PlasticityCfg, NoiseCfg, HistoryCfg, PhaseCfg)
+from synapse import BaseSynapse
+from integrators import LIFexact, LIFeuler
+from thresholding import AdaptiveThreshold, StaticThreshold
+from plasticity import TraceSTDP
+from noise import TestNoise
+from phases import DefaultPhase
+from dataloader import DataLoader
+from runner import Runner
+from states import OPTIONAL_STATE_ARRAYS
+from runtime_base import RuntimeModule, configured_for_network
+
+SEED = 31337
+N_INPUT, N_EXC, N_INH = 5, 9, 3
+
+##Which SPACE each state array lives in. This table IS the contract; the code must match it.
+##The post-side length is pnet.network.n_post, an ORCHESTRATOR local -- Network does not expose it, so the
+## tests read it from the model the same way step() does.
+NEURON_SPACE = ("Spikes", "pre_spike", "pre_trace")
+POST_SIDE = ("V", "V_th", "post_spike", "I", "I2V", "dV", "rec_spikes", "dV_th", "post_trace")
+POST_BY_NEURON = ("W", "dW", "ltd")          ##2-D: rows post side, columns NEURON space
+
+
+def build(post_offset: bool = False, *, threshold_cls=AdaptiveThreshold,
+          integrator_cls=LIFexact, debug: bool = True) -> PhasicNet:
+    pnet = PhasicNet(Experiment(SEED))
+    pnet._instantiate_builder()
+    pnet.builder.set_neurons(("input", N_INPUT, True), ("exc", N_EXC), ("inh", N_INH, False, True))
+    pnet.builder.set_synapses(("in_exc", "input", "exc"), ("exc_exc", "exc", "exc"),
+                              ("exc_inh", "exc", "inh"), ("inh_exc", "inh", "exc"))
+    pnet.builder.set_connectivity(in_exc=0.6, exc_exc=0.3, exc_inh=0.4, inh_exc=0.4)
+    pnet.builder.set_weights({"in_exc": 1.2, "exc_exc": 2.2, "exc_inh": 1.1, "inh_exc": 2.4})
+    pnet.builder.spec_name = "contract_spec"
+    pnet.builder.realize(network_name="contract_net", post_offset=post_offset, save=False)
+
+    pnet.cfg = Cfg(
+        simulation=SimulationCfg(dt=1.0),
+        synapse=SynapseCfg(b=None),
+        integrator=IntegratorCfg(tau_mem=20.0, v_rest=-65.0, r=10.0),
+        threshold=ThresholdCfg(v_reset=-70.0, v_th=-52.0, tau_th=30.0, adpt_th=2.0),
+        plasticity=PlasticityCfg(tau_pretrace=20.0, tau_posttrace=20.0, A_ltp=0.005, A_ltd=0.006,
+                                 eta_exc=1e-3, eta_inh=1e-3, w_min=-10.0, w_max=10.0),
+        noise=NoiseCfg(mu_mem=0.0, sigma_mem=0.0, mu_weights=0.0, sigma_weights=0.0),
+        phases=(PhaseCfg(phase_name="DEFAULT"),))
+
+    pnet.set_runtime_classes(synapse_cls=BaseSynapse, integrator_cls=integrator_cls,
+                             threshold_cls=threshold_cls, plasticity_cls=TraceSTDP,
+                             noise_cls=TestNoise, phase_classes=(DefaultPhase,))
+    pnet.dataloader_cls = DataLoader
+    pnet._instantiate_rules()
+    pnet._instantiate_phases()
+    pnet._instantiate_states(debug=debug)
+    pnet._implement_plastic()
+    pnet._instantiate_dataloader()
+    pnet.instantiate_history("contract_hist", history_cfg=HistoryCfg())
+    return pnet
+
+
+def warm(pnet, T=12):
+    """A few real steps, so buffers hold non-trivial values before anything is probed."""
+    X = (np.random.default_rng(1).random((T, pnet.network.n_input)) < 0.5)
+    Runner(pnet, reset_between_samples=True).run([(X, 0)], epochs=1)
+    return pnet
+
+
+def snapshot(state):
+    return {f.name: (getattr(state, f.name).copy() if isinstance(getattr(state, f.name), np.ndarray) else None)
+            for f in dataclasses.fields(state)}
+
+
+def changed(state, before):
+    out = set()
+    for name, old in before.items():
+        new = getattr(state, name)
+        if old is None or new is None:
+            continue
+        if not np.array_equal(old, new):
+            out.add(name)
+    return out
+
+
+# --------------------------------------------------------------------- 1. coordinate spaces
+
+def _find(ctx, name):
+    """Locate a state array by name across the three state objects. `or` is not usable here:
+    truth-testing a numpy array raises."""
+    for state in (ctx.neur, ctx.upd, ctx.syn):
+        array = getattr(state, name, None)
+        if array is not None:
+            return array
+    return None
+
+
+def test_every_state_array_is_in_its_declared_space():
+    for post_offset in (False, True):
+        pnet = build(post_offset)
+        net, ctx = pnet.network, pnet.ctx
+        n_total, n_post = net.n_total, pnet.network.n_post
+
+        for name in NEURON_SPACE:
+            array = _find(ctx, name)
+            if array is None:
+                continue
+            assert array.shape == (n_total,), f"{name} must be NEURON space (post_offset={post_offset})"
+
+        for name in POST_SIDE:
+            array = _find(ctx, name)
+            if array is None:
+                continue
+            assert array.shape == (n_post,), f"{name} must be post side (post_offset={post_offset})"
+
+        for name in POST_BY_NEURON:
+            array = _find(ctx, name)
+            if array is None:
+                continue
+            assert array.shape == (n_post, n_total), f"{name} must be (n_post, n_total)"
+
+        assert ctx.syn.syn_mask.shape == (n_post, n_total)
+        ##step_input is NEITHER space: it is the input nodes only, straight from the dataloader.
+        assert ctx.upd.step_input.shape == (net.n_input,)
+
+
+def test_no_offset_spaces_coincide_exactly():
+    """The reason space bugs hide: with post_offset=False the two spaces are the SAME numbers.
+    Asserted so the equality is a stated fact rather than a coincidence the code leans on."""
+    pnet = build(False)
+    net = pnet.network
+    assert pnet.network.n_post == net.n_total
+    assert pnet.network.rec_slice == slice(net.n_input, net.n_total)
+
+
+def test_offset_spaces_differ_by_exactly_the_dropped_rows():
+    pnet = build(True)
+    net = pnet.network
+    assert pnet.network.n_post == net.n_rec
+    assert net.n_total - pnet.network.n_post == net.n_input
+    assert pnet.network.rec_slice == slice(0, pnet.network.n_post)
+
+
+def test_rec_slice_is_a_slice_not_a_mask():
+    """model.step writes THROUGH neur.V[net.rec_slice]. Basic slicing gives a view, so the write
+    lands; an index array or bool mask would copy and the reset would be a silent no-op."""
+    for post_offset in (False, True):
+        pnet = build(post_offset)
+        assert isinstance(pnet.network.rec_slice, slice)
+        assert pnet.network.rec_slice.step in (None, 1)
+        ##and it must select exactly the recurrent neurons
+        assert pnet.network.rec_slice.stop - pnet.network.rec_slice.start == pnet.network.n_rec
+
+
+def test_input_nodes_never_get_a_postsynaptic_trace():
+    """Input nodes receive nothing, so they must never accumulate post_spike / post_trace. Under
+    compression they have no row at all; UNCOMPRESSED they have one, and it must stay zero."""
+    pnet = warm(build(False))
+    n_input = pnet.network.n_input
+    assert not pnet.ctx.neur.post_spike[:n_input].any(), "input nodes gained a post_spike"
+    assert not pnet.ctx.upd.post_trace[:n_input].any(), "input nodes gained a post_trace"
+
+
+def test_input_rows_of_W_stay_empty_uncompressed():
+    """The rows compression drops must hold nothing, before AND after learning."""
+    pnet = build(False)
+    n_input = pnet.network.n_input
+    assert not pnet.ctx.syn.W[:n_input].any()
+    warm(pnet)
+    assert not pnet.ctx.syn.W[:n_input].any(), "learning wrote into rows that do not exist compressed"
+
+
+# --------------------------------------------------------------------- 2. write sets
+
+def test_modules_write_only_what_they_declare():
+    """`writes` is a promise the orchestrator relies on to know which buffers are live. Nothing
+    enforced it, so a module could scribble on another's scratch array and only show up as wrong
+    numbers -- the failure that plug-and-play modules make most likely."""
+    pnet = warm(build(False))
+    ctx = pnet.ctx
+    for module in (pnet.synapse, pnet.integrator, pnet.threshold, pnet.plasticity):
+        before = snapshot(ctx.upd)
+        module.step(ctx)
+        touched = changed(ctx.upd, before)
+        declared = set(module.writes)
+        assert touched <= declared, (f"{type(module).__name__} wrote {sorted(touched - declared)} "
+                                     f"but declares writes={sorted(declared)}")
+
+
+def test_modules_do_not_mutate_neuronal_or_synaptic_state():
+    """The hard rule: level-5 modules VIEW NeuronalState/SynapticState and write only UpdateState.
+    Only the orchestrator commits back into neur/syn."""
+    pnet = warm(build(False))
+    ctx = pnet.ctx
+    for module in (pnet.synapse, pnet.integrator, pnet.threshold, pnet.plasticity):
+        neur_before, syn_before = snapshot(ctx.neur), snapshot(ctx.syn)
+        module.step(ctx)
+        assert not changed(ctx.neur, neur_before), f"{type(module).__name__} mutated NeuronalState"
+        assert not changed(ctx.syn, syn_before), f"{type(module).__name__} mutated SynapticState"
+
+
+def test_declared_requires_are_all_allocated():
+    """A module asking for an array that _instantiate_states never allocates gets None and dies
+    mid-run with an unhelpful TypeError."""
+    pnet = build(False)
+    ctx = pnet.ctx
+    for module in (pnet.synapse, pnet.integrator, pnet.threshold, pnet.plasticity):
+        for name in module.requires:
+            assert name in OPTIONAL_STATE_ARRAYS, f"{name} is not a known optional array"
+            assert _find(ctx, name) is not None, f"{type(module).__name__} requires {name}, which was not allocated"
+
+
+def test_unrequired_optional_arrays_are_not_allocated():
+    """The other half: StaticThreshold needs no V_th/dV_th, so nothing should be allocated for it."""
+    pnet = build(False, threshold_cls=StaticThreshold, debug=False)
+    assert pnet.ctx.neur.V_th is None
+    assert pnet.ctx.upd.dV_th is None
+
+
+def test_configured_for_network_reports_the_subclass_not_the_base():
+    """The probe that replaced the old always-true log line: only modules that OVERRIDE the hook
+    report as configured."""
+    pnet = build(False)
+    assert configured_for_network(pnet.plasticity)      # TraceSTDP defines it (eta_pre)
+    assert not configured_for_network(pnet.synapse)     # BaseSynapse inherits the base no-op
+    assert not configured_for_network(pnet.integrator)
+    assert RuntimeModule.configure_for_network(pnet.synapse, pnet.network) is None
+
+
+def test_swapping_a_module_needs_no_orchestrator_change():
+    """The plug-and-play claim, exercised: swap integrator and threshold for their alternates and
+    the run must still complete with finite state and the right shapes."""
+    pnet = warm(build(False, integrator_cls=LIFeuler, threshold_cls=StaticThreshold, debug=False))
+    assert np.all(np.isfinite(pnet.ctx.neur.V))
+    assert pnet.ctx.upd.rec_spikes.shape == (pnet.network.n_post,)
