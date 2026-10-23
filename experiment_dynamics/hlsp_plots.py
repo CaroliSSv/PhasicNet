@@ -10,11 +10,15 @@
 #SAMPLE TIMING: every sample runs a fixed number of steps: mode "train" (self-organising) = n_fit samples x t_train_ms; mode "eval" = the fit,
 # then the validation, then the test samples, each t_state_ms. Labels come from responses.npz (y_train is the fit set, used for both passes).
 from __future__ import annotations
-import json
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
+import capture
 from capture import rate_hz
+from phasicnet import PhasicNet
+from states import RunContext, SynapticState
+from checkpoint import snapshots, load_snapshot, load_trained_model
+from utils import _read_json_yaml, _read_history_npz
 
 PARTS = ("self-organise", "fit", "val", "test")     #the four consecutive blocks of samples in a run, in the order they were simulated
 
@@ -32,22 +36,22 @@ def _one(run_dir: Path, pattern: str) -> Path:
 
 def load_run(run_dir) -> dict:
     """Everything the plots need from a run folder, as plain arrays. Neuron ids are GLOBAL (input first), as in the History file."""
+    import hlsp_lsm_2026                                ##registers HLSPProtocolCfg for load_runcfg
     run_dir = Path(run_dir)
-    net = json.loads((run_dir / "network.json").read_text())
-    proto = json.loads((run_dir / "runcfg.json").read_text())["protocol"]
+    pnet = PhasicNet()
+    pnet.load_net(run_dir / "network.json"); pnet.load_cfg(run_dir / "cfg.json"); pnet.load_runcfg(run_dir / "runcfg.json")
+    net, proto = pnet.network, pnet.runcfg.protocol
     resp = np.load(run_dir / "responses.npz")
     hist_file = _one(run_dir, "History_*.npz")
-    hmeta = json.loads(hist_file.with_suffix(".json").read_text())
-    dt = float(hmeta["dt"])
-    n_tr, n_st = int(round(proto["t_train_ms"] / dt)), int(round(proto["t_state_ms"] / dt))
+    dt = float(_read_json_yaml(hist_file.with_suffix(".json"))["dt"])
+    n_tr, n_st = int(round(proto.t_train_ms / dt)), int(round(proto.t_state_ms / dt))
     n_fit, n_val, n_test = len(resp["y_train"]), len(resp["y_val"]), len(resp["y_test"])
     ##first step and steps per sample of each block (see SAMPLE TIMING)
     starts = np.cumsum([0, n_fit * n_tr, n_fit * n_st, n_val * n_st])
     blocks = {"self-organise": (starts[0], n_tr, resp["y_train"]), "fit": (starts[1], n_st, resp["y_train"]),
               "val": (starts[2], n_st, resp["y_val"]), "test": (starts[3], n_st, resp["y_test"])}
-    sl = {k: slice(v[0], v[1]) for k, v in net["neuronslices"].items()}
-    return dict(dir=run_dir, net=net, proto=proto, resp=resp, hist=np.load(hist_file), dt=dt, blocks=blocks, slices=sl, n_input=int(net["n_input"]),
-                n_total=int(net["n_total"]), partitions=int(proto["partitions"]))
+    return dict(dir=run_dir, pnet=pnet, net=net, proto=proto, resp=resp, hist=_read_history_npz(hist_file), dt=dt, blocks=blocks, slices=net.neuronslices,
+                n_input=net.n_input, n_total=net.n_total, partitions=proto.partitions)
 
 
 def _save(fig, r: dict, name: str):
@@ -122,43 +126,49 @@ def rate_over_run(run_dir, *, bin_samples: int = 50, show: bool = True):
    ######################################################################################
 
 def _weight_files(r: dict) -> list[tuple[str, np.ndarray]]:
-    """(label, W) in run order: network.npz W0 (start), every snap_*.npz by its saved progress (stage, sample), TrainedModel (end).
+    """(label, W) in run order: the network's W0 (start), every snapshot by its saved progress (stage, sample), TrainedModel (end).
     A snapshot whose W equals the previous one is dropped (learning is off after stage 0)."""
     d = r["dir"]
-    out = [("start", np.load(d / "network.npz")["W0"])]
-    snaps = []
-    for f in d.glob("snap_*.npz"):
-        z = np.load(f)
-        snaps.append((int(z["progress__stage"]), int(z["progress__i"]), z["W"]))
-    for st, i, W in sorted(snaps, key=lambda s: (s[0], s[1])):
-        out.append((f"stage {st}, {i}", W))
+    out = [("start", None)]                             ##None = the weights as the network was built (W0)
+    for f in snapshots(d):
+        snap = load_snapshot(f)
+        out.append((f"stage {int(snap.progress['stage'])}, {int(snap.progress['i'])}", snap.W))
     tm = sorted(d.glob("TrainedModel_*.npz"))
     if tm:
-        out.append(("end", np.load(tm[-1])["W"]))
+        out.append(("end", load_trained_model(tm[-1]).W))
     keep = [out[0]]
     for lab, W in out[1:]:
-        if not np.array_equal(W, keep[-1][1]):
+        if keep[-1][1] is None or not np.array_equal(W, keep[-1][1]):
             keep.append((lab, W))
     return keep
 
 
 def degree_table(run_dir, *, threshold: float = 0.0, weighted: bool = False, liquid_only: bool = True) -> tuple[list[str], dict]:
-    """Per checkpoint and neuron: in-, out- and total degree. An edge COUNTS when |w| > threshold (the liquid starts at w = 0); weighted=True
-    sums |w| instead. liquid_only: only liquid -> liquid edges (input edges are fixed).
-    Returns (labels, {"in"|"out"|"total": array (checkpoints, n_liquid)}), neurons in global order."""
+    """Per checkpoint and neuron: in-, out- and total degree (capture.in_degree / out_degree / degree_strength on the run's own weight layout).
+    An edge COUNTS when |w| > threshold (the liquid starts at w = 0); weighted=True sums |w| instead. liquid_only: only liquid -> liquid edges
+    (input edges are fixed). Returns (labels, {"in"|"out"|"total": array (checkpoints, n_liquid)}), neurons in global order."""
     r = run_dir if isinstance(run_dir, dict) else load_run(run_dir)
-    net = np.load(r["dir"] / "network.npz")
-    pre, post = net["pre_idx"].astype(np.int64), net["post_idx"].astype(np.int64) + r["n_input"]     ##post_idx is stored without the input offset
-    m = pre >= r["n_input"] if liquid_only else np.ones(len(pre), bool)
-    n_liq = r["n_total"] - r["n_input"]
-    labels, deg = [], {"in": [], "out": [], "total": []}
+    pnet, net = r["pnet"], r["net"]
+    weights = pnet._to_dense() if pnet.cfg.simulation.weights_format == "dense" else pnet.to_sparse()
+    ctx = RunContext(sim=None, upd=None, neur=None, syn=SynapticState(weights), net=net, rng=None)     ##only W and the network are read
+    liquid = sorted(net.neuronrows, key=lambda g: net.neuronslices[g].start)
+    sources = liquid if liquid_only else sorted(net.neuronslices, key=lambda g: net.neuronslices[g].start)
+    W0 = weights.W
+
+    def deg(direction, a, b):
+        post, pre = (a, b) if direction == "in" else (b, a)
+        if weighted:
+            return capture.degree_strength(ctx, direction=direction, post_group=post, pre_group=pre, signed=False, eps=threshold)
+        f = capture.in_degree if direction == "in" else capture.out_degree
+        return f(ctx, post_group=post, pre_group=pre, eps=threshold)
+
+    labels, out = [], {"in": [], "out": [], "total": []}
     for lab, W in _weight_files(r):
-        w = np.abs(W[m]).astype(np.float64)
-        v = w if weighted else (w > threshold).astype(np.float64)
-        d_in = np.bincount(post[m] - r["n_input"], weights=v, minlength=n_liq)
-        d_out = np.bincount(pre[m] - r["n_input"], weights=v, minlength=n_liq)
-        labels.append(lab); deg["in"].append(d_in); deg["out"].append(d_out); deg["total"].append(d_in + d_out)
-    return labels, {k: np.array(v) for k, v in deg.items()}
+        weights.W = W0 if W is None else W
+        d_in = np.concatenate([sum(deg("in", g, h) for h in sources) for g in liquid]).astype(np.float64)
+        d_out = np.concatenate([sum(deg("out", g, h) for h in liquid) for g in liquid]).astype(np.float64)
+        labels.append(lab); out["in"].append(d_in); out["out"].append(d_out); out["total"].append(d_in + d_out)
+    return labels, {k: np.array(v) for k, v in out.items()}
 
 
 def degrees(run_dir, *, threshold: float = 0.0, weighted: bool = False, show: bool = True):
@@ -212,7 +222,7 @@ def label_responses(run_dir, *, part: str = "test", show: bool = True):
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 6), gridspec_kw=dict(width_ratios=(2, 1)))
     im = a1.imshow(M[order], aspect="auto", interpolation="nearest", cmap="viridis")
     a1.set_xticks(range(len(classes)), classes); a1.set_xlabel("digit"); a1.set_ylabel("liquid neuron (sorted by preferred digit)")
-    fig.colorbar(im, ax=a1, label=f"mean spikes per sample ({r['proto']['t_state_ms']:.0f} ms)")
+    fig.colorbar(im, ax=a1, label=f"mean spikes per sample ({r['proto'].t_state_ms:.0f} ms)")
     a2.bar(classes, np.bincount(pref, minlength=len(classes)), color="0.6")
     a2.set_xlabel("preferred digit"); a2.set_ylabel("neurons")
     a3 = a2.twinx()

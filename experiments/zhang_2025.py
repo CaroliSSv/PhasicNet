@@ -25,7 +25,7 @@
 #RUN (from the repo root):  python -c "import experiments, zhang_2025; zhang_2025.main(n_train=1000, n_assign=1000, n_test=1000, tag='t1')"
 # In parallel: load=dc_reproduce.mnist_dataset, load_kw present_ms / rest_ms. Runtime classes: the pack ZHANG_CLASSES.
 from __future__ import annotations
-import json, logging
+import logging
 from dataclasses import replace
 from pathlib import Path
 ##experiments/__init__.py puts the code folders on sys.path (run from the repo root)
@@ -40,6 +40,7 @@ from zhang2025 import ZhangSynapseCfg, ZhangDendriticSynapse, ZhangThresholdCfg,
 from original_dynamics import TestNoise
 from phases import DefaultPhase
 from paths import RAW_DIR, NETWORKS_DIR, RUNS_DIR
+from utils import _read_json_yaml, _write_json_yaml
 from modelinput import ModelInput
 from preprocessing import load_mnist
 from diehl_cook_2015 import DT_MS, T_PRESENT_MS, T_REST_MS, INPUT_INTENSITY, SEED, fresh_network, mnist_input     ##D&C's constants; fresh_network works unchanged (Dend is transient state)
@@ -320,11 +321,11 @@ def main(*, npz=RAW_DIR / "mnist.npz", n_exc: int = 100, grid=None, no_dendrites
         _, _, pred = proportion_weighting(r["resp_assign"], r["y_assign"], resp_te)
         accs.append(float((pred == r["y_test"]).mean() * 100))
     res_path = out / "results.json"
-    res = json.loads(res_path.read_text()) if res_path.exists() else {}
+    res = _read_json_yaml(res_path) if res_path.exists() else {}
     res["proportion_weighting_accuracy_per_pass"] = accs
     res["proportion_weighting_accuracy_mean"] = float(np.mean(accs))
     res["paper_reference_zhang"] = "Table 2 (MNIST ablation, neuron count not stated; 96.7 = the 6400-exc headline of §4.3): baseline 95.0, + dendrites 95.4, + SOM inhibition 96.7, + shared 96.7 (BindsNET, 100 ms encoding)"
-    res_path.write_text(json.dumps(res, indent=2))
+    _write_json_yaml(res_path, res, JSON=True, YAML=False, log_label="Results")
     logger.info("proportion-weighted accuracy: %s  (D&C rank vote: %s)", accs, res.get("accuracy_per_pass"))
     return run
 

@@ -33,14 +33,14 @@
 #Run (from the repo root, PowerShell):  python -c "import experiments, dc_reproduce; dc_reproduce.main(tag='e100_bench', n_train=1000, n_assign=1000, n_test=1000, test_passes=1)"
 #                                      main(tag="e100_40k")                                                   (the paper's 100-neuron experiment)
 from __future__ import annotations
-import json, logging, subprocess
+import logging, subprocess
 from pathlib import Path
 import numpy as np
 from runcfg import RunCfg, DataCfg, CheckpointCfg, ScorerCfg, HistoryCfg
 from paths import RAW_DIR, RUNS_DIR, ROOT_DIR
 from preprocessing import load_mnist
 from checkpoint import load_trained_model, restore_snapshot
-from utils import _write_json_yaml
+from utils import _write_json_yaml, _read_json_yaml
 from modelinput import ModelInput
 from diehl_cook_2015 import build, fresh_network, DT_MS, T_PRESENT_MS, T_REST_MS, INPUT_INTENSITY, SEED, DCPoissonImages, mnist_input
 from dc_protocol import DCProtocol, DCProtocolCfg                   ##the protocol itself (TRAIN / ASSIGN / TEST / REPORT)
@@ -92,10 +92,10 @@ def load_trained(run_dir: str | Path, *, freeze_theta: bool = True):
     experiments (e.g. a pruning phase). Same build() + seed, so the network is identical; checked against the saved network.json id.
     Theta is frozen by default (the paper's test state)."""
     run_dir = Path(run_dir)
-    proto = json.loads((run_dir / "protocol.json").read_text())
+    proto = _read_json_yaml(run_dir / "protocol.json")
     pnet = build(784, proto["n_exc"], seed=proto["seed"], norm_target=78.0)
     run = pnet._prep_run(mnist_input(np.zeros((4, 28, 28), np.uint8), np.arange(4) % 2), _runcfg())   ##four blank digits: the Run only needs data to assemble
-    saved_id = json.loads((run_dir / "runmeta.json").read_text())["network_id"]
+    saved_id = _read_json_yaml(run_dir / "runmeta.json")["network_id"]
     if run.runmeta.network_id != saved_id:
         raise RuntimeError(f"rebuilt network {run.runmeta.network_id} != saved {saved_id}: build() or its defaults changed since the run")
     restore_snapshot(run.ctx, load_trained_model(next(run_dir.glob("TrainedModel_*.npz"))), run.modules)
