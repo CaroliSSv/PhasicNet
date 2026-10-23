@@ -196,6 +196,10 @@ class RunCfg:
         proto = raw_data.get("protocol")
         if proto and _capitalize_strip_name(proto.get("protocol_type", "")) == "HOLDOUT":     #
             raw_data = {**raw_data, "protocol": {**proto, "protocol_type": "HOLDOUTVAL"}}
+        proto = raw_data.get("protocol")
+        if proto and ("val_fraction" in proto or "n_val" in proto):     ##BACKWARDS compatibility (TODO later: delete): HLSP val_fraction / NALSM n_val -> val_split
+            raw_data = {**raw_data, "protocol": {**{k: v for k, v in proto.items() if k not in ("val_fraction", "n_val")},
+                                                 **({"val_split": proto["val_fraction"]} if "val_fraction" in proto else {})}}
         kwargs = {}
         for f in fields(cls):
             if f.name not in raw_data:

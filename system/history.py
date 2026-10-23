@@ -9,7 +9,7 @@ import numpy as np
 from runcfg import HistoryCfg
 from meta import RunMeta
 from paths import EXPORT_DIR
-from utils import _filepath, _write_history_npz, _write_json_yaml, _capitalize_strip_name, _inf_safe 
+from utils import _filepath, _write_history_npz, _write_json_yaml, _capitalize_strip_name, _inf_safe, _read_history_npz, _read_json_yaml 
 
 logger = logging.getLogger(__name__)
 
@@ -299,4 +299,21 @@ class RunHistory:
         file = _filepath(filename, default_dir=export_dir)
         _write_json_yaml(data=self.metadata(), file=file, JSON=JSON, YAML=YAML,
                          sort_keys=sort_keys, log_label="RunHistory metadata")
-        _write_history_npz(file, self.arrays())
+        _write_history_npz(file, self.arrays())
+
+    @classmethod
+    def load(cls, file: str | Path) -> "RunHistory":
+        """The inverse of save(): <file>.json (metadata) + <file>.npz (arrays) -> a RunHistory for analysis.py. For reading only."""
+        file = Path(file)
+        meta = _read_json_yaml(file.with_suffix(".json"))
+        arrays = _read_history_npz(file)
+        hist = cls(file.stem, int(meta["n_total"]), int(meta["n_input"]), float(meta["dt"]), cfg=None if meta["cfg"] is None else HistoryCfg(**meta["cfg"]))
+        hist.t_start, hist.n_steps, hist._n_events = meta["t_start"], int(meta["n_steps"]), int(meta["n_events"])
+        hist._counts = np.diff(arrays["spike_ptr"]).astype(np.uint32)
+        hist._event_chunks = [arrays["spike_i"]]
+        if "counts" in arrays:
+            hist.Counts = arrays["counts"]
+        for timeline in (hist.phase_timeline, hist.epoch_timeline, hist.datarun_timeline, hist.fold_timeline, hist.mode_timeline):
+            for seg in meta.get(f"{timeline.name}_segments", []):
+                timeline.mark(seg["start_step"], seg["value"])
+        return hist

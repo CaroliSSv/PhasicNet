@@ -33,6 +33,7 @@ from builder import _generate_netmeta
 from cfg import Cfg, SimulationCfg, IntegratorCfg, ThresholdCfg, SynapseCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, DataCfg, CheckpointCfg, ScorerCfg, HistoryCfg, ProtocolCfg
 from protocols import Protocol
+import capture
 from krenzer2025 import RSTDPCfg, RSTDPEligibility, RSTDPEligibilitySparse, scale_rows_to
 from original_dynamics import DeltaCurrentDense, DeltaCurrentSparse, LIFeuler, StaticThreshold
 from original_dynamics import TestNoise
@@ -268,11 +269,10 @@ class RLSMProtocol(Protocol):
         return ops.for_samples(run.train_set, step, stage=0, name="train", reset=True, extra=tail)
 
     def _wex(self, W):
-        proj, syn = self.run.ctx.net.synapseslices["exc1_wta"], self.run.ctx.syn
+        proj = self.run.ctx.net.synapseslices["exc1_wta"]
         if W.ndim == 2:
             return W[proj.post, proj.pre]
-        m = (syn.post >= proj.post.start) & (syn.post < proj.post.stop) & (syn.pre >= proj.pre.start) & (syn.pre < proj.pre.stop)
-        return W[m]
+        return W[capture._syn_block(self.run.ctx, proj.post, proj.pre)]
 
     def execute(self) -> dict:
         run, c, pl, ops = self.run, self.cfg, self.run.plasticity, self.ops

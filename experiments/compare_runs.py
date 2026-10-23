@@ -2,22 +2,22 @@
 
 One call = one run = one Python process, so the peak RAM in compare.json belongs to that run alone:
     python -c "import experiments, compare_runs as c; c.run('event', seed=1, n_train=2000, n_test=500, every=500)"
-    python -c "import experiments, compare_runs as c; c.summary()"
+    python -c "import experiments, compare_runs as c; c.summary()"          (table + runs/compare_plots/*.png)
 n_train / n_test None = the full MNIST set (60k train, of which 10k become validation, + 10k test). raster=False for long runs: the spike
 record grows with every step (about 0.7 GB of RAM on full MNIST).
 Each run folder runs/compare_hlsp_<mode>_s<seed>[_tag] holds HLSP's own results.json (its readout score + seconds per stage), compare.json
-(time, peak RAM, accuracy), degrees.npz (hlsp_plots.degree_table) and hlsp_plots' plots (rasters only with raster=True)."""
+(time, peak RAM, accuracy), degrees.npz (in_<group> / out_<group>: recurrent in- and out-degree per neuron at every saved weight state) and plots.all_plots' figures."""
 from __future__ import annotations
 import sys
 from dataclasses import replace
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 from paths import RUNS_DIR
 from utils import _read_json_yaml, _write_json_yaml
+import capture
 import hlsp_lsm_2026 as hlsp
-import hlsp_plots
+import plots
 
 MODES = ("hybrid_event", "event", "dense")
 
@@ -66,29 +66,27 @@ def run(mode: str = "hybrid_event", *, seed: int = 1, n_train: int | None = None
                                        "seed": seed, "n_train": n_train, "n_test": n_test, "seconds": rep["seconds"], "peak_ram_mb": peak_ram_mb(),
                                        "test_acc": rep.get("test_acc"), "val_acc": rep.get("val_acc"), "train_acc": rep.get("train_acc")},
                      JSON=True, YAML=False, log_label="Compare")
-    plots(out, raster=raster)
+    saved, deg = plots.load(out), {}
+    for g in plots._groups(saved):                       ##per neuron group: (weight states, neurons of g)
+        labels, deg[f"in_{g}"] = plots.weight_series(saved, plots.recurrent_in_degree, post_group=g)
+        _, deg[f"out_{g}"] = plots.weight_series(saved, capture.out_degree, pre_group=g)
+    np.savez(out / "degrees.npz", labels=np.array(labels), **{k: np.array(v) for k, v in deg.items()})
+    plots.all_plots(saved)
     return r
 
 
-def plots(run_dir, *, raster: bool = True):
-    """hlsp_plots' set for one run (rasters and the rate need raster=True) + degrees.npz = in/out/total degree per saved weight state."""
-    r = hlsp_plots.load_run(run_dir)
-    labels, deg = hlsp_plots.degree_table(r)
-    np.savez(r["dir"] / "degrees.npz", labels=np.array(labels), **deg)     ##(checkpoints, n_liquid) each, neurons in global order
-    if raster:
-        hlsp_plots.all_plots(run_dir)
-    else:
-        hlsp_plots.degrees(run_dir, show=False); hlsp_plots.degrees(run_dir, weighted=True, show=False); hlsp_plots.label_responses(run_dir, show=False)
-    plt.close("all")
-
-
 def summary(pattern: str = "compare_hlsp_*"):
-    """One line per finished compare run: seconds (total and self-organising pass), peak RAM, accuracy."""
-    rows = []
-    for f in sorted(RUNS_DIR.glob(f"{pattern}/compare.json")):
-        c = _read_json_yaml(f)
-        rows.append((f.parent.name, c["seconds"]["total"], c["seconds"].get("train"), c["peak_ram_mb"], c["test_acc"]))
+    """One line per finished compare run (seconds total and self-organising pass, peak RAM, accuracy) + the same as figures, grouped by mode,
+    in runs/compare_plots/."""
+    dirs = sorted(f.parent for f in RUNS_DIR.glob(f"{pattern}/compare.json"))
     print(f"{'run':40s} {'total s':>9s} {'train s':>9s} {'peak MB':>9s} {'test %':>7s}")
-    for name, s, st, mb, acc in rows:
-        print(f"{name:40s} {s:9.0f} {st if st is None else round(st):>9} {mb if mb is None else round(mb):>9} {acc if acc is None else round(acc, 2):>7}")
-    return rows
+    for d in dirs:
+        c = _read_json_yaml(d / "compare.json")
+        mb, acc = c["peak_ram_mb"], c["test_acc"]
+        print(f"{d.name:40s} {c['seconds']['total']:9.0f} {c['seconds'].get('train', 0):9.0f} {mb if mb is None else round(mb):>9} {acc if acc is None else round(acc, 2):>7}")
+    if dirs:
+        out = RUNS_DIR / "compare_plots"
+        for key, label in (("compare.seconds.total", "total seconds"), ("compare.seconds.train", "self-organising seconds"),
+                           ("compare.peak_ram_mb", "peak RAM (MB)"), ("test_acc", "test accuracy (%)")):
+            plots.across_runs(dirs, key, by="compare.mode", ylabel=label, path=out / f"{key.split('.', 1)[-1].replace('.', '_')}.png")
+    return dirs

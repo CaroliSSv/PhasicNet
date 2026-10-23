@@ -40,7 +40,8 @@ from zhang2025 import ZhangSynapseCfg, ZhangDendriticSynapse, ZhangThresholdCfg,
 from original_dynamics import TestNoise
 from phases import DefaultPhase
 from paths import RAW_DIR, NETWORKS_DIR, RUNS_DIR
-from utils import _read_json_yaml, _write_json_yaml
+from utils import _read_json_yaml, _write_json_yaml, _read_responses_npz
+from scorer import proportion_weighting
 from modelinput import ModelInput
 from preprocessing import load_mnist
 from diehl_cook_2015 import DT_MS, T_PRESENT_MS, T_REST_MS, INPUT_INTENSITY, SEED, fresh_network, mnist_input     ##D&C's constants; fresh_network works unchanged (Dend is transient state)
@@ -154,36 +155,6 @@ def som_inhibition_weights(pos_exc: np.ndarray, pos_inh: np.ndarray, pre_inh: np
     if dmax <= 0:
         raise ValueError("som_inhibition_weights: every realized edge has distance 0 (one exc neuron inhibiting itself only?).")
     return float(lam) * d / dmax + float(beta_s)
-
-
-def proportion_weighting(resp_assign: np.ndarray, y_assign: np.ndarray, resp_test: np.ndarray, n_classes: int = 10) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """The paper's readout (§4.2: "records the proportion of spikes each neuron emits for each input class and uses these proportions in combination with a
-    weighted sum of network activity"), as BindsNET's evaluation.assign_labels (rates[n, c] = mean response of neuron n to class c; proportions = rates /
-    row sum; assignment = argmax) + evaluation.proportion_weighting (score[c] = sum over neurons assigned c of proportion[n, c] * response[n] / count of
-    such neurons; prediction = argmax). A neuron that never fired during assignment is UNASSIGNED (-1); a test sample with no weighted activity is
-    predicted -1 (abstain, scored as wrong). Ties -> the lower class.
-    Returns (assignments (n_exc,), proportions (n_exc, n_classes), predictions (n_test,))."""
-    resp_assign = np.asarray(resp_assign, dtype=np.float64); y_assign = np.asarray(y_assign); resp_test = np.asarray(resp_test, dtype=np.float64)
-    n = resp_assign.shape[1]
-    rates = np.zeros((n, n_classes), dtype=np.float64)
-    for c in range(n_classes):
-        m = y_assign == c
-        if m.any():
-            rates[:, c] = resp_assign[m].mean(axis=0)
-    tot = rates.sum(axis=1, keepdims=True)
-    tot[tot == 0] = 1.0                                                                ##a neuron that never fired: proportions 0 (no np.where keyword)
-    proportions = rates / tot
-    assign = np.argmax(rates, axis=1)
-    assign[rates.sum(axis=1) == 0] = -1                                                 ##silent neuron -> unassigned
-    scores = np.zeros((resp_test.shape[0], n_classes), dtype=np.float64)
-    for c in range(n_classes):
-        m = assign == c
-        k = int(m.sum())
-        if k > 0:
-            scores[:, c] = (resp_test[:, m] * proportions[m, c][None, :]).sum(axis=1) / k
-    pred = np.argmax(scores, axis=1)
-    pred[scores.sum(axis=1) == 0] = -1                                                  ##silent sample -> abstain
-    return assign, proportions, pred
 
 
    ######################################################################################
@@ -315,7 +286,7 @@ def main(*, npz=RAW_DIR / "mnist.npz", n_exc: int = 100, grid=None, no_dendrites
                 max_repeats=max_repeats, report_every=report_every)
     run = pnet.train(data, rc, test_data=test, out_dir=out, resume_from=resume, save_run=False, save_history=False, dataset_name="mnist")
     ##the paper's proportion-weighted readout, from the responses the protocol saved
-    r = np.load(out / "responses.npz")
+    r = _read_responses_npz(out / "responses.npz")
     accs = []
     for resp_te in r["resp_test"]:
         _, _, pred = proportion_weighting(r["resp_assign"], r["y_assign"], resp_te)

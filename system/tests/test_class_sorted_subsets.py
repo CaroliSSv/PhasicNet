@@ -37,8 +37,8 @@ def test_hlsp_short_run_on_class_sorted_data_sees_both_classes():
     pnet = H.build(n_liquid=60, n_input=40, w_in=1.0, seed=3)
     run = pnet.train(ModelInput.from_tonic(train), H.runcfg(partitions=2, readout_epochs=30, rate_probe=2, report_every=4, n_train=4, n_test=4),
                      test_data=ModelInput.from_tonic(test), save_run=False, save_history=False)
-    ##1/6 of the 4 picked training samples (rounded: 1) becomes the validation block, so n_train reports the 3 fit samples
-    assert run.report["n_train"] == 3 and run.report["n_val"] == 1 and run.report["n_test"] == 4 and run.report["classes"] == [0, 1]
+    ##the validation block is DataHandler's stratified holdout: at least one sample per class (2 of the 4), so n_train reports the 2 fit samples
+    assert run.report["n_train"] == 2 and run.report["n_val"] == 2 and run.report["n_test"] == 4 and run.report["classes"] == [0, 1]
     assert sorted(train.y[run.train_set.index].tolist()) == [0, 0, 1, 1] and sorted(test.y[run.test_set.index].tolist()) == [0, 0, 1, 1]
 
 

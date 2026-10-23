@@ -270,6 +270,12 @@ def _write_responses_npz(file: str | Path, arrays: Dict[str, np.ndarray]) -> Non
     logger.info("Responses arrays saved as: %s", file.with_suffix(".npz"))
 
 
+def _read_responses_npz(file: str | Path) -> Dict[str, np.ndarray]:
+    """Read protocol responses (the inverse of _write_responses_npz)."""
+    with np.load(Path(file).with_suffix(".npz"), allow_pickle=False) as z:
+        return {key: z[key] for key in z.files}
+
+
 
 ####################################################################################
 ############################## HASHING ##############################

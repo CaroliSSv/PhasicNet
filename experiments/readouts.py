@@ -9,6 +9,7 @@ from typing import Optional
 import logging
 
 import numpy as np
+from scorer import confusion_matrix
 
 logger = logging.getLogger(__name__)
 
@@ -174,16 +175,6 @@ class LogisticReadout:
         return float(np.mean(self.predict(X) == np.asarray(y)))
 
 
-def confusion(y_true, y_pred, classes=None) -> np.ndarray:
-    """(n_classes, n_classes) counts, rows = true class, columns = predicted, in `classes` order (default: sorted union)."""
-    y_true, y_pred = np.asarray(y_true), np.asarray(y_pred)
-    classes = np.unique(np.concatenate([y_true, y_pred])) if classes is None else np.asarray(classes)
-    idx = {c: i for i, c in enumerate(classes.tolist())}
-    cm = np.zeros((len(classes), len(classes)), dtype=np.int64)
-    np.add.at(cm, (np.vectorize(idx.get)(y_true), np.vectorize(idx.get)(y_pred)), 1)
-    return cm
-
-
 def fit_evaluate(X_train, y_train, X_test, y_test, *, X_val=None, y_val=None, **readout_kw) -> dict:
     """Fit on the training responses, score both sets. Returns accuracies (percent), the confusion matrix on the test set and the readout.
     X_val / y_val = an explicit validation set (passed to fit); "val_acc" is then reported too."""
@@ -191,7 +182,7 @@ def fit_evaluate(X_train, y_train, X_test, y_test, *, X_val=None, y_val=None, **
     pred_test = ro.predict(X_test)
     return {"train_acc": 100.0 * ro.score(X_train, y_train), "test_acc": 100.0 * float(np.mean(pred_test == np.asarray(y_test))),
             "val_acc": None if X_val is None else 100.0 * ro.score(X_val, y_val),
-            "confusion_test": confusion(y_test, pred_test, ro.classes_), "classes": ro.classes_, "pred_test": pred_test,
+            "confusion_test": confusion_matrix(y_test, pred_test, int(ro.classes_.max()) + 1), "classes": ro.classes_, "pred_test": pred_test,
             "final_loss": ro.loss_[-1] if ro.loss_ else None, "readout": ro}
 
 

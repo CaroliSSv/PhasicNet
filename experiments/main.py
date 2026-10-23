@@ -89,13 +89,13 @@ def main():
                     checkpoint=CheckpointCfg(to_disk=True), scorer=ScorerCfg(), history=HistoryCfg(include_input=False))
     run = pnet.train(data, runcfg, save_run=True, save_history=True)
     r, m = run.report, run.runmeta
-    print("\n" + "=" * 72)
-    print(f"TRIAL  score (the holdout fit's val score): {r['score']:.4f}   epochs {[round(e['score'], 3) for e in r['folds'][0]['epochs']]}")   ##one fold, no mean/std over folds
-    print(f"       stopped: {[f['stopped'] for f in r['folds']]}   mode: {WEIGHTS}/{UPDATE}")
-    print(f"       run_id={m.run_id}  cfg_id={m.cfg_id}  derived_cfg_id={m.derived_cfg_id}  network_id={m.network_id[:12]}..  dataset_id={m.dataset_id}")
+    logger.info("=" * 72)
+    logger.info(f"TRIAL  score (the holdout fit's val score): {r['score']:.4f}   epochs {[round(e['score'], 3) for e in r['folds'][0]['epochs']]}")   ##one fold, no mean/std over folds
+    logger.info(f"       stopped: {[f['stopped'] for f in r['folds']]}   mode: {WEIGHTS}/{UPDATE}")
+    logger.info(f"       run_id={m.run_id}  cfg_id={m.cfg_id}  derived_cfg_id={m.derived_cfg_id}  network_id={m.network_id[:12]}..  dataset_id={m.dataset_id}")
     t = run.test()
-    print(f"TEST   n={t['n_test']}  score={t['score']:.4f}  spikes={t['spikes']}")
-    print("\nARTEFACTS"); [print(f"  {d.name}/{f.name}") for d in (NETWORKS_DIR, RUNS_DIR) for f in sorted(d.iterdir())]
+    logger.info(f"TEST   n={t['n_test']}  score={t['score']:.4f}  spikes={t['spikes']}")
+    logger.info("ARTEFACTS: %s", [f"{d.name}/{f.name}" for d in (NETWORKS_DIR, RUNS_DIR) for f in sorted(d.iterdir())])
     return run
 
 if __name__ == "__main__":

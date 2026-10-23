@@ -299,12 +299,12 @@ def test_protocol_end_to_end(fmt, tmp_path):
     pnet = D.build(n_liquid=60, grid=(5, 4, 3), n_input=40, seed=3, weights_format=fmt)
     run = pnet.train(train, D.runcfg(n_init=10, readout_epochs=60, readout_patience=None, report_every=5), test_data=test, out_dir=tmp_path, save_run=False, save_history=False)
     r = run.report
-    assert r["protocol"] == "NALSMProtocol" and r["n_train"] == 12 and r["n_test"] == 6 and r["n_val"] == 2
+    assert r["protocol"] == "NALSMProtocol" and r["n_train"] == 10 and r["n_test"] == 6 and r["n_val"] == 2     ##the 12 -> 10 fit + 2 val (ops.partition)
     assert r["test_acc"] == 100.0 and r["train_acc"] == 100.0
     assert r["init_rate_hz_first200"] > 0 and r["astro_A_end_of_sample_first200"] < 0.15 and r["readout_epochs_run"] == 60
     assert run.ctx.sim.mode == "train" and run.plasticity.decay_active
     z = np.load(tmp_path / "responses.npz")
-    assert z["resp_train"].shape == (12, 60) and z["resp_test"].shape == (6, 60) and z["readout_W"].shape == (60, 2)
+    assert z["resp_train"].shape == (10, 60) and z["resp_val"].shape == (2, 60) and z["resp_test"].shape == (6, 60) and z["readout_W"].shape == (60, 2)
     W_ini = z["W_ini"]
     assert not np.array_equal(W_ini, run._W0)                                     ##the initialization pass changed W
     assert np.abs(W_ini[W_ini != 0]).min() >= 0.0 and np.abs(W_ini).max() <= 3.0
@@ -390,7 +390,7 @@ def test_protocol_requires_test_data_and_validates_window():
         D.NALSMProtocol(D.NALSMProtocolCfg(init_window="middle"), run)
     p = D.NALSMProtocol(D.NALSMProtocolCfg(n_init=7, init_window="random", t_init_ms=5.0), run)
     order = p._init_order()
-    assert len(order) == 7 and sorted(order[:4].tolist()) == [0, 1, 2, 3] and np.array_equal(order, p._init_order())
+    assert len(order) == 7 and sorted(order[:p._n_train].tolist()) == list(range(p._n_train)) and np.array_equal(order, p._init_order())
     frames = np.arange(20)[:, None] * np.ones((1, 40), int)
     seg = p._snapshot(frames, 2)
     assert seg.shape == (5, 40) and np.array_equal(seg[:, 0], np.arange(seg[0, 0], seg[0, 0] + 5)) and np.array_equal(seg, p._snapshot(frames, 2))

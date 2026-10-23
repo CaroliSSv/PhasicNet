@@ -375,7 +375,7 @@ def test_protocol_cfgs_carry_no_n_train_and_runcfg_puts_it_in_datacfg():
         assert rc.data.n_train == 4 and rc.data.n_test == 3 and mod.runcfg().data.n_train is None
         with pytest.raises(TypeError):
             cfg_cls(n_train=4)
-    assert "n_val" in {f.name for f in dataclasses.fields(na.NALSMProtocolCfg)}          ##NALSM's validation block is its own
+    assert na.NALSMProtocolCfg().val_split == hl.HLSPProtocolCfg().val_split == 1.0 / 6.0     ##the validation blocks: ProtocolCfg.val_split -> ops.partition
     pnet = kr.build(n_input=10, n_liquid=30, n_wta=4, n_wta_inh=2)
     data = ModelInput([np.zeros((5, 10), bool)] * 8, np.arange(8) % 2)
     run = pnet._prep_run(data, kr.runcfg(n_train=6, n_test=3), test_data=data)

@@ -15,6 +15,7 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from utils import _read_responses_npz
 
 logger = logging.getLogger(__name__)
 
@@ -343,8 +344,8 @@ def protocol_scores(run_dir: str | Path, *, n_classes: int = 10) -> dict:  ##NOT
     """
     from scorer import dc_assign_labels, dc_rank_predict, confusion_matrix
     run_dir = Path(run_dir)
-    with np.load(run_dir / "responses.npz", allow_pickle=False) as z:
-        r_as, y_as, r_te, y_te = z["resp_assign"], z["y_assign"], z["resp_test"], z["y_test"]
+    z = _read_responses_npz(run_dir / "responses.npz")
+    r_as, y_as, r_te, y_te = z["resp_assign"], z["y_assign"], z["resp_test"], z["y_test"]
     assign = dc_assign_labels(r_as, y_as, n_classes)
     acc, cms = [], []
     for r in r_te:                                       ##one entry per test pass
@@ -358,7 +359,7 @@ def plot_protocol_separability(run_dir: str | Path, *, test_pass: int = 0, path:
     """plot_separability for a stored protocol run's test responses"""
     from scorer import calinski_harabasz
     run_dir = Path(run_dir)
-    with np.load(run_dir / "responses.npz", allow_pickle=False) as z:
-        r, y = z["resp_test"][test_pass], z["y_test"]
+    z = _read_responses_npz(run_dir / "responses.npz")
+    r, y = z["resp_test"][test_pass], z["y_test"]
     return plot_separability(r, y, score=calinski_harabasz(r, y), title=f"{run_dir.name} test pass {test_pass + 1}", path=path)
  

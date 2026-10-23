@@ -168,16 +168,16 @@ def main(n_train: int = 160, n_test: int = 40, n_exc: int = 100, epochs: int = 1
     ##NOTE: pnet.train() does NOT run the per-example normalisation or the re-presentation rule (dc_reproduce.py does); this demo only exercises the assembly.
     run = pnet.train(data, runcfg(epochs=epochs, n_train=n_train, n_test=n_test), save_run=False, save_history=False)
     r, m = run.report, run.runmeta
-    print("\n" + "=" * 72)
-    print(f"TRIAL  score: {r['score']}   folds {r['fold_scores']}   stopped: {[f['stopped'] for f in r['folds']]}")
-    print(f"       run_id={m.run_id}  cfg_id={m.cfg_id}  derived_cfg_id={m.derived_cfg_id}  network_id={m.network_id[:12]}..")
+    logger.info("=" * 72)
+    logger.info(f"TRIAL  score: {r['score']}   folds {r['fold_scores']}   stopped: {[f['stopped'] for f in r['folds']]}")
+    logger.info(f"       run_id={m.run_id}  cfg_id={m.cfg_id}  derived_cfg_id={m.derived_cfg_id}  network_id={m.network_id[:12]}..")
     syn, net = run.ctx.syn, run.ctx.net
     blk = syn.W[net.synapseslices["in_exc"].post, net.synapseslices["in_exc"].pre]
-    print(f"in_exc  W in [{blk.min():.3f}, {blk.max():.3f}]  per-exc sums {blk.sum(axis=1).min():.1f}..{blk.sum(axis=1).max():.1f} (78 before each example)")
-    print(f"theta   exc {run.threshold.Theta[net.rec_slice][net.n_exc - net.n_input:].min():.3f}..{run.threshold.Theta.max():.3f} mV")
+    logger.info(f"in_exc  W in [{blk.min():.3f}, {blk.max():.3f}]  per-exc sums {blk.sum(axis=1).min():.1f}..{blk.sum(axis=1).max():.1f} (78 before each example)")
+    logger.info(f"theta   exc {run.threshold.Theta[net.rec_slice][net.n_exc - net.n_input:].min():.3f}..{run.threshold.Theta.max():.3f} mV")
     run.threshold.freeze(True)      ##the paper's test state: mode "eval" (test) raises if the persistent Theta still adapts
     t = run.test()
-    print(f"TEST   n={t['n_test']}  score={t['score']}  spikes={t['spikes']}")
+    logger.info(f"TEST   n={t['n_test']}  score={t['score']}  spikes={t['spikes']}")
     return run
 
 

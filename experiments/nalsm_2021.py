@@ -16,7 +16,7 @@
 #
 #PROTOCOL (Sec. 2.2): (1) initialization: n_init random training images, 20 ms each, STDP + astrocyte on, NO decay -> W_ini. (2) counting: every
 # sample 250 ms from W_ini (restored per sample), STDP + astrocyte and the 0.99 decay on -> liquid spike counts. (3) readout: normalised counts,
-# linear layer, soft targets, L2 5e-10, the epoch with the best validation accuracy (val = the last n_val training samples).
+# linear layer, soft targets, L2 5e-10, the epoch with the best validation accuracy (val = ProtocolCfg.val_split of train, a stratified holdout; the paper: the last 10k).
 # Paper: 96.15% MNIST (N = 1000), 96.13% N-MNIST, 83.54% F-MNIST; 97.61 / 97.51 / 85.84 at N = 8000.
 #
 #INFERRED: GRID; the per-sample reset of the synapse counters; the readout optimiser (Adam lr 1e-3; theirs Adadelta lr 0.1) and its
@@ -228,7 +228,8 @@ class NALSMProtocolCfg(ProtocolCfg):
             the training set (repeated when n_init > n_train); t_init_ms = 20 ms each; init_window "start" | "random" (N-MNIST: a random window)
         t_sample_ms = 250: the counting presentation
         plastic_counting = STDP + astrocyte stay on during counting, W restored to W_ini before every sample (NALSM, LSM+STDP); False = fixed W
-        n_val = validation block = the LAST n_val of train (None = n_train / 6). n_train / n_test are DataCfg's (runcfg() below)
+        val_split = the validation block (ProtocolCfg.val_split; default 1/6 = the paper's 10k of 60k), split off by ops.partition (DataHandler's
+            stratified holdout); the liquid and the readout fit on the rest. n_train / n_test are DataCfg's (runcfg() below)
         readout_* = readouts.LogisticReadout with NALSM_OUTPUT_LAYER's loss (soft +-1 targets, L2 5e-10); readout_patience = epochs
             without a better validation accuracy before stopping (the selected epoch is the best one)
     """
@@ -238,7 +239,7 @@ class NALSMProtocolCfg(ProtocolCfg):
     init_window: str = "start"
     t_sample_ms: float = T_SAMPLE_MS
     plastic_counting: bool = True
-    n_val: int | None = None
+    val_split: float | None = 1.0 / 6.0
     readout_lr: float = READOUT["lr"]
     readout_batch: int = READOUT["batch_size"]
     readout_epochs: int = READOUT["epochs"]
@@ -249,10 +250,10 @@ class NALSMProtocolCfg(ProtocolCfg):
 
 class NALSMProtocol(Protocol):
     """
-    Stage 0 (initialization, mode "train", decay off): n_init snapshots -> W_ini (proto__W_ini; saved as the TrainedModel). Stage 1 / 2 (counting
-    train / test, decay on, W restored per sample): Resp_train / Resp_test (int16) = liquid spike counts, Y_*, Init_rate / Astro = [sum, count] of
-    the two 200-sample probes. Then the readout.
-    progress = {"stage": 0 | 1 | 2, "i": samples done}: resumable with CheckpointCfg.every + out_dir (a stage-0 resume continues the W pass).
+    Stage 0 (initialization, mode "train", decay off): n_init snapshots of the fit set -> W_ini (proto__W_ini; saved as the TrainedModel). Stage 1 / 2 / 3
+    (counting train / val / test, decay on, W restored per sample): Resp_train / Resp_val / Resp_test (int16) = liquid spike counts, Y_*, Init_rate / Astro =
+    [sum, count] of the two 200-sample probes. Then the readout.
+    progress = {"stage": 0 | 1 | 2 | 3, "i": samples done}: resumable with CheckpointCfg.every + out_dir (a stage-0 resume continues the W pass).
     """
     protocol_type = "NALSM"
     needs_test_set = True     ##test_data=test to PhasicNet.train; Protocol.__init__ checks it
@@ -264,14 +265,17 @@ class NALSMProtocol(Protocol):
             raise ValueError(f"init_window must be 'start' or 'random', got {c.init_window!r}")
         dt = float(run.history.dt)
         self._n_init_steps = int(round(c.t_init_ms / dt)); self._n_steps = int(round(c.t_sample_ms / dt))
-        self._n_train, self._n_test = len(run.train_set), len(run.test_set)
-        self._n_val = max(1, self._n_train // 6) if c.n_val is None else min(int(c.n_val), self._n_train - 1)
+        (self._fit_set, val), = self.ops.partition(val_split=c.val_split or None)
+        self._val_set = run.train_set.subset(np.zeros(0, dtype=np.int64), "val") if val is None else val
+        self._n_train, self._n_val, self._n_test = len(self._fit_set), len(self._val_set), len(run.test_set)
         self._n_liq = net.n_total - net.n_input
         self._plastic = hasattr(run.plasticity, "decay_active")           ##NoPlasticity (the LSM baseline) has no passes to switch
         self.W_ini = np.zeros_like(run.ctx.syn.W)
         self.Resp_train = np.zeros((self._n_train, self._n_liq), dtype=np.int16)
+        self.Resp_val = np.zeros((self._n_val, self._n_liq), dtype=np.int16)
         self.Resp_test = np.zeros((self._n_test, self._n_liq), dtype=np.int16)
         self.Y_train = np.full(self._n_train, -1, dtype=np.int64)
+        self.Y_val = np.full(self._n_val, -1, dtype=np.int64)
         self.Y_test = np.full(self._n_test, -1, dtype=np.int64)
         self.Init_rate, self.Astro = np.zeros(2), np.zeros(2)   ##[sum, count] of the two 200-sample probes
 
@@ -293,7 +297,7 @@ class NALSMProtocol(Protocol):
         """Stage 0 = ops.for_samples over the init order: snapshot j -> reset, its t_init_ms window, STDP + astrocyte on, no decay.
         W_ini = W at the end. Returns False when a resumed run is already past it (W_ini came back from the snapshot)."""
         run, c, ops = self.run, self.cfg, self.ops
-        snapshots = run.train_set.subset(self._init_order(), "nalsm_init")     ##the n_init samples in their keyed order (repeats included)
+        snapshots = self._fit_set.subset(self._init_order(), "nalsm_init")     ##the n_init samples in their keyed order (repeats included)
         run.set_mode("train")
         if self._plastic:
             run.plasticity.decay_active = False
@@ -349,14 +353,16 @@ class NALSMProtocol(Protocol):
         if self._plastic:
             run.plasticity.decay_active = True
         run.set_mode("train" if (c.plastic_counting and self._plastic) else "eval")
-        ops.responses(run.train_set, self._count_sample, self.Resp_train, self.Y_train, stage=1, name="count-train", n=self._n_train)
-        ops.responses(run.test_set, self._count_sample, self.Resp_test, self.Y_test, stage=2, name="count-test", n=self._n_test)
-        ##(3) readout: the last n_val training samples validate
+        ops.responses(self._fit_set, self._count_sample, self.Resp_train, self.Y_train, stage=1, name="count-train", n=self._n_train)
+        ops.responses(self._val_set, self._count_sample, self.Resp_val, self.Y_val, stage=2, name="count-val", n=self._n_val)
+        ops.responses(run.test_set, self._count_sample, self.Resp_test, self.Y_test, stage=3, name="count-test", n=self._n_test)
+        ##(3) readout: the validation block validates
         Xtr, scale = self.normalise_counts(self.Resp_train)
+        Xva, _ = self.normalise_counts(self.Resp_val, scale)
         Xte, _ = self.normalise_counts(self.Resp_test, scale)
+        val = dict(X_val=Xva, y_val=self.Y_val) if self._n_val else {}
         ro = fit_evaluate(Xtr, self.Y_train, Xte, self.Y_test, lr=c.readout_lr, epochs=c.readout_epochs, batch_size=c.readout_batch, l2=c.readout_l2,
-                          standardize=False, soft_target_logit=1.0, val_fraction=self._n_val / self._n_train, val_from_end=True, select_by_val_acc=True,
-                          early_stop_patience=c.readout_patience)
+                          standardize=False, soft_target_logit=1.0, select_by_val_acc=True, early_stop_patience=c.readout_patience, **val)
         res, files = readout_report(ro, self.Resp_train, self.Y_train, self.Resp_test, self.Y_test)     ##the RAW counts go to responses.npz (the readout saw them normalised); own keys below
         res.update({"val_acc_best": max(ro["readout"].val_acc_) if ro["readout"].val_acc_ else None,
                     "readout_epochs_run": len(ro["readout"].loss_), "n_val": int(self._n_val),
@@ -366,7 +372,7 @@ class NALSMProtocol(Protocol):
                     "liquid_rate_hz_test": capture.rate_hz(self.Resp_test.sum(1).mean(), self._n_liq, self._n_steps, run.history.dt),
                     "w_ini_abs_mean": w_ini_abs_mean, "w_ini_at_bound_frac": w_ini_at_bound,     ##taken above, before the counting pass
                     "paper_reference": "Sec. 3.4 / Table 1: NALSM1000 96.15% MNIST, 96.13% N-MNIST, 83.54% F-MNIST; NALSM8000 97.61 / 97.51 / 85.84; LSM 95.44, LSM+STDP 90.52 (MNIST)"})
-        files.update(count_scale=np.asarray(scale), W_ini=self.W_ini)
+        files.update(count_scale=np.asarray(scale), W_ini=self.W_ini, resp_val=self.Resp_val, y_val=self.Y_val)
         return ops.finish(res, files=files, lines=(
             f"  test accuracy : {res['test_acc']:.2f}%  (train {res['train_acc']:.2f}%, best val {res['val_acc_best']})   paper: {res['paper_reference']}",
             f"  liquid        : {res['liquid_rate_hz_test']:.1f} Hz in the test presentations; W_ini |W| mean {res['w_ini_abs_mean']:.3f}; initialization rate "
@@ -380,7 +386,7 @@ NALSM_SPARSE = replace(NALSM_DENSE, synapse_cls=NALSMExpSynapseSparse, plasticit
 
 
 def runcfg(*, every: int | None = None, n_train: int | None = None, n_test: int | None = None, **proto) -> RunCfg:
-    """n_train / n_test -> DataCfg, which PICKS the samples (stratified, seeded, shuffled order); n_val stays in the protocol cfg."""
+    """n_train / n_test -> DataCfg, which PICKS the samples (stratified, seeded, shuffled order); val_split stays in the protocol cfg."""
     return RunCfg(data=DataCfg(make_test_split=False, test_fraction=0.0, n_train=n_train, n_test=n_test, shuffle=True),
                   checkpoint=CheckpointCfg(to_disk=False, every=every), scorer=ScorerCfg(rate_hz_min=0.0),
                   history=HistoryCfg(include_input=False, record_spikes=False, record_counts=True), protocol=NALSMProtocolCfg(**proto))
@@ -391,7 +397,7 @@ def runcfg(*, every: int | None = None, n_train: int | None = None, n_test: int 
    ######################################################################################
 
 def main(*, dataset: str = "mnist", model: str = "nalsm", n_liquid: int = N_LIQUID, grid=GRID, astro_w: float | None = None, lsm_weight: float | None = None,
-         n_init: int = N_INIT, n_train: int | None = None, n_val: int | None = None, n_test: int | None = None, seed: int = SEED, static_counting: bool = False,
+         n_init: int = N_INIT, n_train: int | None = None, val_split: float = 1.0 / 6.0, n_test: int | None = None, seed: int = SEED, static_counting: bool = False,
          cutoff: float | None = None, dense: bool = False, every: int | None = None, resume: str | None = None, tag: str = "", out: str | None = None):
     """ONE run; every setting is a keyword argument (defaults = the constants).
         dataset: "mnist" | "nmnist" | "fmnist"; model: "nalsm" | "lsm_stdp" | "lsm"; astro_w None: 0.015 for N <= 1000, 0.0075 above; lsm_weight None: the
@@ -403,7 +409,7 @@ def main(*, dataset: str = "mnist", model: str = "nalsm", n_liquid: int = N_LIQU
                  astro_w=astro_w, lsm_weight=LSM_WEIGHT[dataset] if lsm_weight is None else lsm_weight, cutoff=cutoff)
     out = Path(out) if out else RUNS_DIR / f"nalsm_2021_{model}_{dataset}_n{n_liquid}{('_' + tag) if tag else ''}"
     return pnet.train(train, runcfg(every=every, n_init=0 if model == "lsm" else n_init, init_window="random" if dataset == "nmnist" else "start",
-                                    plastic_counting=not static_counting, n_train=n_train, n_val=n_val, n_test=n_test),
+                                    plastic_counting=not static_counting, n_train=n_train, val_split=val_split, n_test=n_test),
                       test_data=test, out_dir=out, resume_from=resume, save_run=False, save_history=False, dataset_name=dataset)
 
 

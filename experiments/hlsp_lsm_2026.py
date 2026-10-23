@@ -177,8 +177,9 @@ class HLSPProtocolCfg(ProtocolCfg):
             "subsample": t_train_ms worth of time steps drawn at random (sorted) from the whole sample, as the authors' HLSPLSM.py does for
             spiking data; for Poisson-encoded images "start" is equivalent
         partitions = P, the number of temporal partitions of the state vector (MNIST 1, N-MNIST 4)
-        val_fraction = this fraction of the training samples is the VALIDATION block, drawn with the protocol's keyed rng before Phase 2 (the
-            authors' random_split): the liquid self-organises on the rest ("fit" samples), the readout watches the validation loss for its lr schedule
+        val_split = this fraction of the training samples is the VALIDATION block (ProtocolCfg.val_split; default 1/6 = Sec. 4.1's 10k of 60k), split off
+            by ops.partition (DataHandler's stratified holdout) before Phase 2: the liquid self-organises on the rest ("fit" samples), the readout watches
+            the validation loss for its lr schedule
         readout_* = readouts.LogisticReadout (readout_l2 = the code's Adam weight_decay 1e-4, which is LogisticReadout's l2 as is; Eq. 19 writes it
             as lambda/(2m) ||W||^2 per batch of m; readout_dropout = the authors' Dropout(0.2))
         rate_probe = the initial population firing rate (Hz) is logged over this many first training samples (Fig. 2: calibrate W_in / PEAK_HZ)
@@ -194,7 +195,7 @@ class HLSPProtocolCfg(ProtocolCfg):
     readout_epochs: int = READOUT["epochs"]
     readout_l2: float = READOUT["l2_lambda"]
     readout_dropout: float = READOUT["dropout"]
-    val_fraction: float = VAL_FRACTION
+    val_split: float | None = VAL_FRACTION
     report_every: int = 500
     rate_probe: int = 200
 
@@ -219,14 +220,10 @@ class HLSPProtocol(Protocol):
         self._n_tr_steps = int(round(c.t_train_ms / dt)); self._n_st_steps = int(round(c.t_state_ms / dt))
         self._bounds = np.linspace(0, self._n_st_steps, int(c.partitions) + 1).astype(int)
         n_avail, self._n_test = len(run.train_set), len(run.test_set)
-        ##the validation block comes out of the training set HERE, before the liquid sees anything. Keyed draw -> the same split on a resume
-        if not 0.0 <= c.val_fraction < 1.0:
-            raise ValueError(f"val_fraction must be in [0, 1), got {c.val_fraction}")
-        n_val = int(round(c.val_fraction * n_avail))
-        perm = self.rng.rng("protocol", "val_split").permutation(n_avail)
-        self._fit_set = run.train_set.subset(np.sort(perm[n_val:]), "hlsp_fit")
-        self._val_set = run.train_set.subset(np.sort(perm[:n_val]), "hlsp_val")
-        self._n_train, self._n_val = len(self._fit_set), n_val
+        ##the validation block comes out of the training set HERE, before the liquid sees anything (ops.partition: keyed on the dataset -> the same split on a resume)
+        (self._fit_set, val), = self.ops.partition(val_split=c.val_split or None)
+        self._val_set = run.train_set.subset(np.zeros(0, dtype=np.int64), "val") if val is None else val
+        self._n_train, self._n_val = len(self._fit_set), len(self._val_set)
         self._n_liq = net.n_total - net.n_input
         d = int(c.partitions) * self._n_liq
         self.Resp_train = np.zeros((self._n_train, d), dtype=np.int16)
@@ -314,7 +311,7 @@ HLSP_SPARSE = replace(HLSP_DENSE, synapse_cls=HLSPCurrentSynapseSparse, plastici
 def runcfg(*, every: int | None = None, n_train: int | None = None, n_test: int | None = None, **proto) -> RunCfg:
     """n_train / n_test -> DataCfg, which PICKS the samples (stratified, seeded, shuffled order)."""
     return RunCfg(data=DataCfg(make_test_split=False, test_fraction=0.0, n_train=n_train, n_test=n_test, shuffle=True),
-                  checkpoint=CheckpointCfg(to_disk=False, every=every, keep_last=None), scorer=ScorerCfg(rate_hz_min=0.0),   ##keep_last=None: hlsp_plots.degrees reads the whole stage-0 snapshot series
+                  checkpoint=CheckpointCfg(to_disk=False, every=every, keep_last=None), scorer=ScorerCfg(rate_hz_min=0.0),   ##keep_last=None: plots.over_weights reads the whole stage-0 snapshot series
                   history=HistoryCfg(include_input=False, record_spikes=False, record_counts=True), protocol=HLSPProtocolCfg(**proto))
 
 

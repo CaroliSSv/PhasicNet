@@ -142,6 +142,36 @@ def dc_rank_predict(responses: np.ndarray, assign: np.ndarray, n_classes: int = 
     return (n_classes - 1) - np.argmax(scores[:, ::-1], axis=1)
 
 
+def proportion_weighting(resp_assign: np.ndarray, y_assign: np.ndarray, resp_test: np.ndarray, n_classes: int = 10) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Zhang et al. 2025's readout (§4.2: "records the proportion of spikes each neuron emits for each input class and uses these proportions in combination with a
+    weighted sum of network activity"), as BindsNET's evaluation.assign_labels (rates[n, c] = mean response of neuron n to class c; proportions = rates /
+    row sum; assignment = argmax) + evaluation.proportion_weighting (score[c] = sum over neurons assigned c of proportion[n, c] * response[n] / count of
+    such neurons; prediction = argmax). A neuron that never fired during assignment is UNASSIGNED (-1); a test sample with no weighted activity is
+    predicted -1 (abstain, scored as wrong). Ties -> the lower class.
+    Returns (assignments (n_exc,), proportions (n_exc, n_classes), predictions (n_test,))."""
+    resp_assign = np.asarray(resp_assign, dtype=np.float64); y_assign = np.asarray(y_assign); resp_test = np.asarray(resp_test, dtype=np.float64)
+    n = resp_assign.shape[1]
+    rates = np.zeros((n, n_classes), dtype=np.float64)
+    for c in range(n_classes):
+        m = y_assign == c
+        if m.any():
+            rates[:, c] = resp_assign[m].mean(axis=0)
+    tot = rates.sum(axis=1, keepdims=True)
+    tot[tot == 0] = 1.0                                                                ##a neuron that never fired: proportions 0 (no np.where keyword)
+    proportions = rates / tot
+    assign = np.argmax(rates, axis=1)
+    assign[rates.sum(axis=1) == 0] = -1                                                 ##silent neuron -> unassigned
+    scores = np.zeros((resp_test.shape[0], n_classes), dtype=np.float64)
+    for c in range(n_classes):
+        m = assign == c
+        k = int(m.sum())
+        if k > 0:
+            scores[:, c] = (resp_test[:, m] * proportions[m, c][None, :]).sum(axis=1) / k
+    pred = np.argmax(scores, axis=1)
+    pred[scores.sum(axis=1) == 0] = -1                                                  ##silent sample -> abstain
+    return assign, proportions, pred
+
+
 def confusion_matrix(labels: np.ndarray, predicted: np.ndarray, n_classes: int = 10) -> np.ndarray:
     """(n_classes, n_classes) counts; row = true class, column = predicted class."""
     cm = np.zeros((n_classes, n_classes), dtype=np.int64)

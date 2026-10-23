@@ -15,7 +15,8 @@ from cfg import Cfg
 from builder import CONNECTIVITY_PATTERNS
 from zhang2025 import ZhangSynapseCfg, ZhangDendriticSynapse, ZhangThresholdCfg, ZhangOneSpikeThreshold
 from diehlcook import DCConductanceSynapse, DCAdaptiveThreshold
-from zhang_2025 import build, runcfg, psc_groups, register_psc_patterns, exc_grid, som_inhibition_weights, proportion_weighting, LAMBDA, BETA_S
+from zhang_2025 import build, runcfg, psc_groups, register_psc_patterns, exc_grid, som_inhibition_weights, LAMBDA, BETA_S
+from scorer import proportion_weighting
 from diehl_cook_2015 import fresh_network, build as dc_build
 
 N_IN, N_EXC = 32, 16
