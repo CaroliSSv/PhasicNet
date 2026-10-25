@@ -30,7 +30,7 @@ import logging
 
 import numpy as np
 
-from cfg import SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg
+from dynamicscfg import SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg
 from states import RunContext
 from dynamics import Synapse, Integrator, Threshold, Plasticity
 from diehlcook import _row_vector, _inh_rows          ##per-ROW constants (inh rows vs the rest), shared with D&C

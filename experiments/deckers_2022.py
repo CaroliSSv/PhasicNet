@@ -26,7 +26,7 @@ from dataclasses import dataclass, field, asdict, replace
 from pathlib import Path
 import numpy as np
 from phasicnet import PhasicNet, RuntimeClasses
-from cfg import Cfg, SimulationCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, DataCfg, CheckpointCfg, ScorerCfg, HistoryCfg, ProtocolCfg
 from protocols import Protocol
 from deckers2022 import (ELSMSynapseCfg, ELSMIntegratorCfg, ELSMThresholdCfg, NoPlasticityCfg,
@@ -138,7 +138,7 @@ def build(*, n_liquid: int = N_LIQUID, grid=GRID, n_input: int = N_INPUT, seed: 
                 sum(v for k, v in net.synapse_counts.items() if not k.startswith("n_in_")) / n_liquid)
 
     sparse = weights_format == "sparse"
-    pnet.cfg = Cfg(
+    pnet.cfg = DynamicsCfg(
         simulation=SimulationCfg(dt=dt_ms, weights_format=weights_format, update_on="timestep"),
         synapse=ELSMSynapseCfg(b=None, tau_ge=TAU_GE, tau_gi=TAU_GI, e_exc=e_exc, e_inh=e_inh, delays=dict(DELAYS_MS)),
         integrator=ELSMIntegratorCfg(tau_mem=TAU_MEM, v_rest=V_REST, r=1.0, tau_range=TAU_RANGE if tau_heterogeneous else None, t_refrac=T_REFRAC,

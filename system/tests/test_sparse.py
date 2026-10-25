@@ -9,7 +9,7 @@ from modelinput import ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from cfg import (Cfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
+from system.dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
                  PlasticityCfg, NoiseCfg, PhaseCfg)
 from runcfg import RunCfg, DataCfg, ScorerCfg, ProtocolCfg
 from protocols import HoldoutValidation
@@ -42,7 +42,7 @@ def assemble(fmt="dense", update="timestep", freeze=(), sizes=(N_INPUT, N_EXC, N
     pnet.builder.spec_name = "sparse_spec"
     pnet.builder.realize(network_name="sparse_net", save=False)
 
-    pnet.cfg = Cfg(
+    pnet.cfg = DynamicsCfg(
         simulation=SimulationCfg(dt=1.0, weights_format=fmt, update_on=update),
         synapse=SynapseCfg(b=None),
         integrator=IntegratorCfg(tau_mem=20.0, v_rest=-65.0, r=10.0),

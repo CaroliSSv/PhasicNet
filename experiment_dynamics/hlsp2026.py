@@ -23,7 +23,7 @@ import logging
 import numpy as np
 from synapticindex import touched, elapsed   ##the lazy-decay helpers of update_on "event"
 
-from cfg import SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg
+from dynamicscfg import SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg
 from states import RunContext, NeuronalState, SynapticState
 from dynamics import Synapse, Integrator, Threshold, Plasticity
 from diehlcook import _row_vector

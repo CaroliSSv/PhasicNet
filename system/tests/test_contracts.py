@@ -9,7 +9,7 @@ from modelinput import ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from cfg import (Cfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
+from system.dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
                  PlasticityCfg, NoiseCfg, PhaseCfg)
 from runcfg import RunCfg, DataCfg
 from original_dynamics import DeltaCurrentDense, DeltaCurrentSparse, LIFexact, LIFeuler, AdaptiveThreshold, StaticThreshold, TraceSTDP, SparseTraceSTDP
@@ -47,7 +47,7 @@ def build(post_offset: bool = False, *, threshold_cls=AdaptiveThreshold,
     pnet.builder.spec_name = "contract_spec"
     pnet.builder.realize(network_name="contract_net", post_offset=post_offset, save=False)
 
-    pnet.cfg = Cfg(
+    pnet.cfg = DynamicsCfg(
         simulation=SimulationCfg(dt=1.0, weights_format=fmt, update_on=update),
         synapse=SynapseCfg(b=None),
         integrator=IntegratorCfg(tau_mem=20.0, v_rest=-65.0, r=10.0),

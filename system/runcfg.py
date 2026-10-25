@@ -7,7 +7,7 @@ from numpy.random import SeedSequence, Generator, PCG64
 from hashlib import blake2b
 import logging
 from utils import _capitalize_strip_name     
-from cfg import _load_section_cfg      
+from system.dynamicscfg import _load_section_cfg      
 
 logger = logging.getLogger(__name__)
 
@@ -213,4 +213,4 @@ class RunCfg:
         return cls(**kwargs)
     
     def _canonicalize(self):
-        return asdict(self)
+        return asdict(self)

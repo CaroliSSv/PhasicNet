@@ -20,7 +20,7 @@ import logging
 
 import numpy as np
 
-from cfg import SimulationCfg, PlasticityCfg
+from dynamicscfg import SimulationCfg, PlasticityCfg
 from states import RunContext, SynapticState
 from dynamics import Plasticity
 

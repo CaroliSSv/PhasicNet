@@ -1,5 +1,5 @@
 from __future__ import annotations
-from cfg import SimulationCfg, PhaseCfg, SleepPhaseCfg
+from dynamicscfg import SimulationCfg, PhaseCfg, SleepPhaseCfg
 import capture   ##observables are module functions now
 import numpy as np
 from dynamics import Phase
@@ -121,4 +121,4 @@ class SleepPhase(Phase):
         """Sleep modifies noise directly INSIDE noise module"""
 
         np.multiply(current_noise, self.noise_scale, out=current_noise)
-        np.add(current_noise, self.noise_shift, out=current_noise)
+        np.add(current_noise, self.noise_shift, out=current_noise)

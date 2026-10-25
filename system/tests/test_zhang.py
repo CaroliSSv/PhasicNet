@@ -11,7 +11,7 @@ import numpy as np
 from modelinput import ModelInput
 import pytest
 
-from cfg import Cfg
+from system.dynamicscfg import DynamicsCfg
 from builder import CONNECTIVITY_PATTERNS
 from zhang2025 import ZhangSynapseCfg, ZhangDendriticSynapse, ZhangThresholdCfg, ZhangOneSpikeThreshold
 from diehlcook import DCConductanceSynapse, DCAdaptiveThreshold
@@ -169,7 +169,7 @@ def test_all_switches_off_is_diehl_cook():
 
 def test_cfg_round_trip_finds_the_zhang_sections():
     cfg = _build().cfg
-    back = Cfg.load(asdict(cfg))
+    back = DynamicsCfg.load(asdict(cfg))
     assert isinstance(back.synapse, ZhangSynapseCfg) and isinstance(back.threshold, ZhangThresholdCfg) and back == cfg
 
 

@@ -13,7 +13,7 @@ import pytest  ##only needed when run under pytest
 from phasicnet import PhasicNet
 from rnghandler import RNGHandler
 from builder import Network
-from cfg import (Cfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
+from system.dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
                  PlasticityCfg, NoiseCfg, PhaseCfg)
 from runcfg import RunCfg, DataCfg
 from protocols import HoldoutValidation
@@ -26,8 +26,8 @@ import capture
 SEED = 4242
 
 
-def make_cfg(sigma_mem: float = 0.5) -> Cfg:
-    return Cfg(
+def make_cfg(sigma_mem: float = 0.5) -> DynamicsCfg:
+    return DynamicsCfg(
         simulation=SimulationCfg(dt=1.0),
         synapse=SynapseCfg(b=None),
         integrator=IntegratorCfg(tau_mem=20.0, v_rest=-65.0, r=10.0),

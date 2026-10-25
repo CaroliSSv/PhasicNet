@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import numpy as np
 from phasicnet import PhasicNet
-from cfg import Cfg, SimulationCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, DataCfg, CheckpointCfg, ScorerCfg, HistoryCfg, ProtocolCfg
 from diehlcook import (DCSynapseCfg, DCIntegratorCfg, DCThresholdCfg, DCPlasticityCfg,
                        DCConductanceSynapse, DCLIFeuler, DCAdaptiveThreshold, DCTripletSTDP)
@@ -105,7 +105,7 @@ def build(n_input: int, n_exc: int, *, seed: int = SEED, dt_ms: float = DT_MS, n
     ##values several modules must agree on, set ONCE here
     delays = dict(delay_syn_group="in_exc", delay_min=0.0, delay_max=10.0)      ##the script: delay['ee_input'] = (0 ms, 10 ms); exc->inh has none
     t_refrac, t_refrac_inh, v_reset_inh = 5.0, 2.0, -45.0
-    pnet.cfg = Cfg(
+    pnet.cfg = DynamicsCfg(
         simulation=SimulationCfg(dt=dt_ms, weights_format="dense", update_on="timestep"),
         synapse=DCSynapseCfg(b=None, tau_ge=1.0, tau_gi=2.0, e_exc=0.0, e_inh=-100.0, e_inh_inh=-85.0, **delays, v_reset_inh=v_reset_inh, t_refrac_inh=t_refrac_inh),
         integrator=DCIntegratorCfg(tau_mem=100.0, v_rest=-65.0, r=1.0, tau_mem_inh=10.0, v_rest_inh=-60.0, t_refrac=t_refrac, t_refrac_inh=t_refrac_inh,

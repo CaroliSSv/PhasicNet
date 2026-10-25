@@ -13,7 +13,7 @@ from modelinput import ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from cfg import Cfg, SimulationCfg, NoiseCfg, PhaseCfg
+from system.dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
 from original_dynamics import TestNoise
 from phases import DefaultPhase
 from hlsp2026 import (HLSPSynapseCfg, HLSPIntegratorCfg, HLSPThresholdCfg, HLSPPlasticityCfg, HLSPCurrentSynapse, HLSPCurrentSynapseSparse,
@@ -52,7 +52,7 @@ def _micro(fmt, *, w_in=0.0, w_ee=0.5, w_ei=0.5, w_ie=0.5, std=True, pre_depleti
     pnet.builder.set_weights({"in_exc": w_in, "exc_exc": w_ee, "exc_inh": w_ei, "inh_exc": w_ie})
     pnet.builder.realize(network_name="micro", post_offset=True, save=False)
     sparse = fmt == "sparse"
-    pnet.cfg = Cfg(simulation=SimulationCfg(dt=1.0, weights_format=fmt, update_on="event" if sparse else "timestep"),
+    pnet.cfg = DynamicsCfg(simulation=SimulationCfg(dt=1.0, weights_format=fmt, update_on="event" if sparse else "timestep"),
                    synapse=HLSPSynapseCfg(b=None, tau_syn=1.0, std=std, std_u=0.4, std_tau=150.0, std_pre_depletion=pre_depletion),
                    integrator=HLSPIntegratorCfg(tau_mem=64.0, v_rest=0.0, r=1.0, t_refrac=2.0),
                    threshold=HLSPThresholdCfg(v_reset=0.0, v_th=20.0, tau_th=None, adpt_th=None, t_refrac=2.0),

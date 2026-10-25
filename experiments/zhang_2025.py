@@ -32,7 +32,7 @@ from pathlib import Path
 import numpy as np
 from phasicnet import PhasicNet, RuntimeClasses
 from builder import CONNECTIVITY_PATTERNS, _generate_netmeta
-from cfg import Cfg, SimulationCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, DataCfg, CheckpointCfg, ScorerCfg, HistoryCfg
 from diehlcook import (DCSynapseCfg, DCIntegratorCfg, DCThresholdCfg, DCPlasticityCfg,
                        DCConductanceSynapse, DCLIFeuler, DCAdaptiveThreshold, DCTripletSTDP)
@@ -230,7 +230,7 @@ def build(n_input: int, n_exc: int, *, dendrites: bool = True, som_inhibition: b
     else:
         synapse = DCSynapseCfg(**syn_kw)
     threshold = ZhangThresholdCfg(**thr_kw, one_spike=True, one_spike_select=one_spike_select, one_spike_losers=one_spike_losers) if one_spike else DCThresholdCfg(**thr_kw)
-    pnet.cfg = Cfg(
+    pnet.cfg = DynamicsCfg(
         simulation=SimulationCfg(dt=dt_ms, weights_format="dense", update_on="timestep"),
         synapse=synapse,
         integrator=DCIntegratorCfg(tau_mem=100.0, v_rest=-65.0, r=1.0, tau_mem_inh=10.0, v_rest_inh=-60.0, t_refrac=t_refrac, t_refrac_inh=t_refrac_inh,

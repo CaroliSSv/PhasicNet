@@ -45,7 +45,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import analysis, capture
 from phasicnet import PhasicNet
-from cfg import Cfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, DataCfg, HistoryCfg
 from dynamics import Synapse
 from states import RunContext
@@ -240,7 +240,7 @@ def build() -> PhasicNet:
     net = pnet.builder.realize(network_name="brian2_stdp_net", post_offset=True, save=False)   ##post_offset: W is (1, N+1), not (N+1, N+1)
     net.save_net(network_name="brian2_stdp_net", spec_name="brian2_stdp_spec", JSON=True, YAML=False, save_to=NETWORKS_DIR)
 
-    pnet.cfg = Cfg(
+    pnet.cfg = DynamicsCfg(
         simulation=SimulationCfg(dt=DT_MS, weights_format="dense", update_on="timestep"),
         synapse=ConductanceSynapseCfg(b=None, tau_e=TAUE),
         integrator=IntegratorCfg(tau_mem=TAUM, v_rest=EL, r=EE - VR),      ##ge*(Ee-vr): a constant 60 mV driving force per unit ge

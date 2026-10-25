@@ -3,7 +3,7 @@
 #THE API, in the order it is meant to be used:
 #   PhasicNet(seed)                      one RNGHandler, keyed streams
 #   builder -> realize -> save_net       the network, saved ONCE to networks/
-#   Cfg (physics) + dynamics classes     SimulationCfg carries dt AND the execution mode
+#   DynamicsCfg (physics) + dynamics classes     SimulationCfg carries dt AND the execution mode
 #   RunCfg                               the protocol + history/scorer/checkpoint/data policies
 #   ModelInput(source, y)                the data
 #   pnet.train(data, runcfg) -> Run      split -> pick -> holdout fit -> epochs
@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import numpy as np
 from phasicnet import PhasicNet
-from cfg import Cfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, DataCfg, CheckpointCfg, ScorerCfg, HistoryCfg, ProtocolCfg
 from original_dynamics import DeltaCurrentDense, DeltaCurrentSparse, LIFexact, AdaptiveThreshold, TraceSTDP, SparseTraceSTDP
 from original_dynamics import TestNoise
@@ -63,7 +63,7 @@ def build(n_input):
     net.save_net(network_name="mnist_net", spec_name="mnist_spec", JSON=True, YAML=False, save_to=NETWORKS_DIR)
 
     sparse = WEIGHTS == "sparse"
-    pnet.cfg = Cfg(
+    pnet.cfg = DynamicsCfg(
         simulation=SimulationCfg(dt=1.0, weights_format=WEIGHTS, update_on=UPDATE),
         synapse=SynapseCfg(b=None),
         integrator=IntegratorCfg(tau_mem=20.0, v_rest=-65.0, r=60.0),            ##r sized so a typical digit drives V_inf past threshold

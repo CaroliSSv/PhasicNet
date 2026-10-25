@@ -210,7 +210,7 @@ def _load_phase_cfg(raw: dict) ->PhaseCfg:
 
 
 @dataclass  ###NOTE EITHER ADD OPTIONALS OR DONT FREEZE.
-class Cfg:
+class DynamicsCfg:
     """
     Container of cfgs with args for model runtime.
     Args:
@@ -231,7 +231,7 @@ class Cfg:
     phases: Tuple[PhaseCfg, ...] = ()
 
     @classmethod
-    def load(cls, raw_data: Dict) -> Cfg:
+    def load(cls, raw_data: Dict) -> DynamicsCfg:
         return cls(
             simulation=SimulationCfg(**raw_data["simulation"]) if raw_data.get("simulation") is not None else None,
             synapse=_load_section_cfg(SynapseCfg, raw_data["synapse"]) if raw_data.get("synapse") is not None else None,

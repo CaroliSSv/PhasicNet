@@ -16,7 +16,7 @@ import logging
 import numpy as np
 from synapticindex import touched, elapsed, decayed   #(true event-based): the lazy-decay helpers of update_on "event"
 
-from cfg import SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, SimulationCfg, NoiseCfg
+from dynamicscfg import SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, SimulationCfg, NoiseCfg
 from states import NeuronalState, SynapticState, UpdateState, RunContext
 from dynamics import Synapse, Integrator, Threshold, Plasticity, Noise, Phase
 from rnghandler import RNGHandler

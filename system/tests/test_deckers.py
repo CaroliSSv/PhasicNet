@@ -12,7 +12,7 @@ from modelinput import ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from cfg import Cfg, SimulationCfg, NoiseCfg, PhaseCfg
+from system.dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
 from network import _canon_to_specs, NeuronSpec
 from original_dynamics import TestNoise
 from phases import DefaultPhase
@@ -47,7 +47,7 @@ def _micro(fmt, *, delays, w_in=5.0, w_rec=0.0, elsm=True, dt=1.0, t_refrac=3.0,
     pnet.builder.set_connectivity(in_exc="all_to_all", exc_exc="all_but_self", exc_inh="all_to_all")
     pnet.builder.set_weights({"in_exc": w_in, "exc_exc": w_rec, "exc_inh": 0.0})
     pnet.builder.realize(network_name="micro", post_offset=True, save=False)
-    pnet.cfg = Cfg(simulation=SimulationCfg(dt=dt, weights_format=fmt, update_on="timestep"),
+    pnet.cfg = DynamicsCfg(simulation=SimulationCfg(dt=dt, weights_format=fmt, update_on="timestep"),
                    synapse=ELSMSynapseCfg(tau_ge=3.0, tau_gi=10.0, e_exc=e_exc, e_inh=0.0, delays=delays),
                    integrator=ELSMIntegratorCfg(tau_mem=30.0, v_rest=13.5, r=1.0, tau_range=None, t_refrac=t_refrac, t_refrac_inh=2.0, v_init=None),
                    threshold=ELSMThresholdCfg(v_reset=13.5, v_th=15.0, tau_th=550.0 if elsm else None, adpt_th=1.0 if elsm else None, t_refrac=t_refrac,

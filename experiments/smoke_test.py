@@ -10,7 +10,7 @@ _ROOT = Path(__file__).resolve().parents[1]     ##experiments/<script> -> Phasic
 sys.path[:0] = [str(_ROOT / "system"), str(_ROOT / "system_modules"), str(_ROOT / "experiment_dynamics"), str(_ROOT / "experiments")]
 import numpy as np
 from phasicnet import PhasicNet
-from cfg import Cfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, DataCfg
 from original_dynamics import DeltaCurrentDense, DeltaCurrentSparse, LIFexact, AdaptiveThreshold, TraceSTDP, SparseTraceSTDP
 from original_dynamics import TestNoise
@@ -28,7 +28,7 @@ def build(fmt="dense", update="timestep"):
     p.builder.set_connectivity(in_exc=0.6, exc_exc=0.3, exc_inh=0.4, inh_exc=0.4)
     p.builder.set_weights({"in_exc":(0.0,3.0),"exc_exc":2.2,"exc_inh":1.1,"inh_exc":2.4})   ##range: symmetry breaking
     p.builder.spec_name="smoke_spec"; p.builder.realize(network_name="smoke_net", save=False)
-    p.cfg = Cfg(simulation=SimulationCfg(dt=1.0, weights_format=fmt, update_on=update), synapse=SynapseCfg(b=None),
+    p.cfg = DynamicsCfg(simulation=SimulationCfg(dt=1.0, weights_format=fmt, update_on=update), synapse=SynapseCfg(b=None),
         integrator=IntegratorCfg(tau_mem=20.0, v_rest=-65.0, r=40.0),
         threshold=ThresholdCfg(v_reset=-70.0, v_th=-52.0, tau_th=30.0, adpt_th=2.0),
         plasticity=PlasticityCfg(tau_pretrace=20.0,tau_posttrace=20.0,A_ltp=0.005,A_ltd=0.006,eta_exc=1e-3,eta_inh=1e-3,w_min=None,w_max=10.0),

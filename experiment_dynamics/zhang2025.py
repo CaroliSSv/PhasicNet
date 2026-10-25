@@ -28,7 +28,7 @@ import logging
 
 import numpy as np
 
-from cfg import SimulationCfg
+from dynamicscfg import SimulationCfg
 from states import RunContext
 from diehlcook import DCSynapseCfg, DCConductanceSynapse, DCThresholdCfg, DCAdaptiveThreshold
 

@@ -2,7 +2,7 @@
 #   1. Network.neuronrows / row_offset: the one-time group -> row_idx lookup agrees with the builder's own synapseslices,
 #      with and without post_offset, and post_offset changes NO result (dense, sparse/timestep, sparse/event).
 #   2. Network.synapse_counts: realized n_<synapse_group_name> per group, saved with the network.
-#   3. Cfg.load finds cfg SUBCLASSES by cfg_type: a D&C cfg survives a JSON round trip.
+#   3. DynamicsCfg.load finds cfg SUBCLASSES by cfg_type: a D&C cfg survives a JSON round trip.
 #   4. RunCfg.load reads every field incl. the nested policy sections.
 #   5. The derived cfg records the RESOLVED freeze (synapse-group names), not the requested keywords.
 # Run: pytest system/tests/test_lookup_and_loading.py -q
@@ -14,7 +14,7 @@ from modelinput import ModelInput   ##train() / _prep_run require a ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from cfg import Cfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
+from system.dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, DataCfg, CheckpointCfg, HistoryCfg, ScorerCfg, ProtocolCfg
 from original_dynamics import DeltaCurrentDense, DeltaCurrentSparse, LIFexact, AdaptiveThreshold, TraceSTDP, SparseTraceSTDP
 from original_dynamics import TestNoise
@@ -31,7 +31,7 @@ def _pnet(post_offset: bool, fmt: str = "dense", update_on: str = "timestep") ->
     p.builder.set_weights({"in_exc": (0.0, 4.0), "exc_exc": 1.0, "exc_inh": 3.0, "inh_exc": 3.0})
     p.builder.realize(network_name="t", post_offset=post_offset)
     sp = fmt == "sparse"
-    p.cfg = Cfg(simulation=SimulationCfg(dt=1.0, weights_format=fmt, update_on=update_on), synapse=SynapseCfg(b=None),
+    p.cfg = DynamicsCfg(simulation=SimulationCfg(dt=1.0, weights_format=fmt, update_on=update_on), synapse=SynapseCfg(b=None),
                 integrator=IntegratorCfg(tau_mem=20.0, v_rest=-65.0, r=60.0), threshold=ThresholdCfg(v_reset=-65.0, v_th=-54.0, tau_th=100.0, adpt_th=0.4),
                 plasticity=PlasticityCfg(tau_pretrace=20.0, tau_posttrace=20.0, A_ltp=0.01, A_ltd=0.0105, eta_exc=1.0, eta_inh=1.0,
                                          w_min=-6.0, w_max=6.0, freeze=("inh",)),
@@ -118,12 +118,12 @@ def test_dc_cfg_round_trips_through_json():
     from diehl_cook_2015 import build
     p = build(32, 6, norm_target=78.0 * 32 / 784)
     raw = json.loads(json.dumps(dataclasses.asdict(p.cfg)))
-    loaded = Cfg.load(raw)
+    loaded = DynamicsCfg.load(raw)
     assert type(loaded.synapse).__name__ == "DCSynapseCfg" and type(loaded.plasticity).__name__ == "DCPlasticityCfg"
     assert dataclasses.replace(loaded, plasticity=dataclasses.replace(loaded.plasticity, freeze=tuple(loaded.plasticity.freeze))) == p.cfg
     raw["synapse"]["cfg_type"] = "NoSuchCfg"
     with pytest.raises(RuntimeError, match="No SynapseCfg subclass"):
-        Cfg.load(raw)
+        DynamicsCfg.load(raw)
 
 
 def test_runcfg_load_reads_every_field():
@@ -152,7 +152,7 @@ def test_runcfg_load_reads_files_saved_before_the_run_settings_moved():
 
 def test_phase_type_and_protocol_type_are_the_keys_and_old_files_still_load():
     """phase_type / protocol_type are the saved keys the loaders pick subclasses by; old files (phase_name / protocol_name) still load (COMPAT)."""
-    from cfg import SleepPhaseCfg, _load_phase_cfg
+    from system.dynamicscfg import SleepPhaseCfg, _load_phase_cfg
     from dc_protocol import DCProtocolCfg
     raw = dataclasses.asdict(_pnet(True).cfg)
     assert [k for k in raw["phases"][0] if k.endswith("_name") or k.endswith("_type")] == ["phase_type"]
@@ -163,7 +163,7 @@ def test_phase_type_and_protocol_type_are_the_keys_and_old_files_still_load():
     ##the old keys (COMPAT, delete later): the same result, and the old key does not survive into the cfg
     old = {**raw, "phases": [{"phase_name": "DEFAULT", "triggers": {}, "trigger_mode": "all", "exit_triggers": None, "dataloader_active": True},
                              {"phase_name": "Sleep", "triggers": {}, "trigger_mode": "all", "exit_triggers": None, "dataloader_active": True, "sleep_fraction": 0.5}]}
-    loaded = Cfg.load(old)
+    loaded = DynamicsCfg.load(old)
     assert [type(c) for c in loaded.phases] == [PhaseCfg, SleepPhaseCfg] and loaded.phases[1].phase_type == "SLEEP" and loaded.phases[1].sleep_fraction == 0.5
     assert RunCfg.load({"protocol": {"protocol_name": "dc2015", "n_train": 4}}).protocol == DCProtocolCfg(n_train=4)
     assert RunCfg.load({"protocol": {"protocol_name": "holdoutval", "val_split": 0.3}}) == RunCfg(protocol=ProtocolCfg(val_split=0.3))
@@ -179,7 +179,7 @@ def test_noise_cfg_lost_its_weight_fields_and_old_files_still_load():
         NoiseCfg(mu_mem=0.0, sigma_mem=0.0, mu_weights=0.0, sigma_weights=0.0)
     raw = json.loads(json.dumps(dataclasses.asdict(_pnet(True).cfg)))
     raw["noise"] = {**raw["noise"], "mu_weights": 0.0, "sigma_weights": 0.0}      ##an old file
-    assert Cfg.load(raw).noise == NoiseCfg(mu_mem=0.0, sigma_mem=0.0)
+    assert DynamicsCfg.load(raw).noise == NoiseCfg(mu_mem=0.0, sigma_mem=0.0)
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

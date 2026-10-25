@@ -33,7 +33,7 @@ from pathlib import Path
 ##experiments/__init__.py puts the code folders on sys.path (run from the repo root)
 import numpy as np
 from phasicnet import PhasicNet, RuntimeClasses
-from cfg import Cfg, SimulationCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, DataCfg, CheckpointCfg, ScorerCfg, HistoryCfg, ProtocolCfg
 from protocols import Protocol
 from hlsp2026 import (HLSPSynapseCfg, HLSPIntegratorCfg, HLSPThresholdCfg, HLSPPlasticityCfg, HLSPCurrentSynapse, HLSPCurrentSynapseSparse,
@@ -149,7 +149,7 @@ def build(*, n_liquid: int = N_LIQUID, n_input: int = 784, w_in: float = W_IN["m
     logger.info("liquid: %d exc + %d inh, %d inputs; synapses %s", n_exc, n_inh, n_input, net.synapse_counts)
 
     sparse = weights_format == "sparse"
-    pnet.cfg = Cfg(
+    pnet.cfg = DynamicsCfg(
         simulation=SimulationCfg(dt=dt_ms, weights_format=weights_format, update_on="hybrid_event" if sparse else "timestep"),
         synapse=HLSPSynapseCfg(b=None, tau_syn=TAU_SYN, std=std, std_u=STD_U, std_tau=STD_TAU, std_pre_depletion=std_pre_depletion),
         integrator=HLSPIntegratorCfg(tau_mem=TAU_MEM, v_rest=V_RESET, r=1.0, t_refrac=T_REFRAC),

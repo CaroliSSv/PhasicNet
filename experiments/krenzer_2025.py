@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 from phasicnet import PhasicNet, RuntimeClasses
 from builder import _generate_netmeta
-from cfg import Cfg, SimulationCfg, IntegratorCfg, ThresholdCfg, SynapseCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, IntegratorCfg, ThresholdCfg, SynapseCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, DataCfg, CheckpointCfg, ScorerCfg, HistoryCfg, ProtocolCfg
 from protocols import Protocol
 import capture
@@ -158,7 +158,7 @@ def build(*, n_liquid: int = N_LIQUID, grid=GRID, n_input: int = N_INPUT, n_wta:
 
     sparse = weights_format == "sparse"
     frozen = tuple(name for name in net.synapsespecs if name != "exc1_wta")        ##only the R-STDP projection learns
-    pnet.cfg = Cfg(
+    pnet.cfg = DynamicsCfg(
         simulation=SimulationCfg(dt=dt_ms, weights_format=weights_format, update_on="timestep"),
         synapse=SynapseCfg(b=None),
         integrator=IntegratorCfg(tau_mem=TAU_MEM, v_rest=V_REST, r=R_M),

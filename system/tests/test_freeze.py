@@ -14,7 +14,7 @@ from modelinput import ModelInput   ##train() / _prep_run require a ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from cfg import (Cfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
+from system.dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
                  PlasticityCfg, NoiseCfg, PhaseCfg)
 from runcfg import RunCfg, DataCfg
 from protocols import HoldoutValidation
@@ -47,7 +47,7 @@ def assemble(freeze=(), post_offset: bool = False, seed: int = SEED):
     pnet.builder.realize(network_name="freeze_net", post_offset=post_offset, save=False)
 
 
-    pnet.cfg = Cfg(
+    pnet.cfg = DynamicsCfg(
         simulation=SimulationCfg(dt=1.0),
         synapse=SynapseCfg(b=None),
         integrator=IntegratorCfg(tau_mem=20.0, v_rest=-65.0, r=10.0),

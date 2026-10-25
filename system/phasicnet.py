@@ -29,7 +29,7 @@ from abc import ABC
 
 from rnghandler import RNGHandler
 from builder import NetBuilder, Network
-from cfg import Cfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
+from system.dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, HistoryCfg, DataCfg
 from meta import RunMeta
 from synapticindex import SynapticIndex
@@ -85,7 +85,7 @@ def _check_weights_format(fmt: str, *modules) -> None:
             raise TypeError(f"{type(module).__name__} is a {declared!r} module but SimulationCfg.weights_format={fmt!r}.")
 
 
-def _derive_cfg(cfg: Cfg, modules: dict) -> Cfg:
+def _derive_cfg(cfg: DynamicsCfg, modules: dict) -> DynamicsCfg:
     """
     The cfg ACTUALLY used, read back from the INSTANTIATED modules (dynamics modules)
         -   Uses original cfg to collect the field names; each cfg section is searched ONLY inside its own module (so threshold.tau_ and integrator.tau_ won't collide).
@@ -114,7 +114,7 @@ def _derive_cfg(cfg: Cfg, modules: dict) -> Cfg:
     return replace(cfg, **sections)
 
 
-def _generate_runmeta(cfg_name, run_name, derived_cfg: Cfg, original_cfg: Cfg, runcfg: RunCfg,
+def _generate_runmeta(cfg_name, run_name, derived_cfg: DynamicsCfg, original_cfg: DynamicsCfg, runcfg: RunCfg,
                       network_name, network_id, rng_spec, dataset_id=None, dataset_name=None, dataset_id_n_samples=None) -> RunMeta:
     """
     Meta to identify a run
@@ -203,7 +203,7 @@ class PhasicNet:
         """Load one canonicalized cfg file into the PhasicNet."""
         file = _filepath(file)
         raw_data = _read_json_yaml(file=file, fmt=fmt)
-        self.cfg = Cfg.load(raw_data)
+        self.cfg = DynamicsCfg.load(raw_data)
         logger.info("Loaded cfg: %s", self.cfg)
 
     def load_net(self, file: str, npz_file = None, fmt: Literal["json", "yaml", "yml"] | None = None) -> None:
@@ -227,7 +227,7 @@ class PhasicNet:
         """Load runcfg and cfg of one canonicalized file into the PhasicNet."""
         file = _filepath(file)
         raw_data = _read_json_yaml(file=file, fmt=fmt)
-        self.cfg = Cfg.load(raw_data)
+        self.cfg = DynamicsCfg.load(raw_data)
         self.runcfg = RunCfg.load(raw_data)
         logger.info("Loaded runcfg: %s", asdict(self.runcfg))
         logger.info("Loaded cfg: %s", asdict(self.cfg))
@@ -276,7 +276,7 @@ class PhasicNet:
             filename = f"Cfg_{now}_{cfg_name}" if cfg_name is not None else f"Cfg_{now}_{cfg_id}"
         
         file = save_to / filename
-        _write_json_yaml(file=file, data=export_cfg, JSON=JSON, YAML=YAML, sort_keys=sort_keys, log_label="Cfg")
+        _write_json_yaml(file=file, data=export_cfg, JSON=JSON, YAML=YAML, sort_keys=sort_keys, log_label="DynamicsCfg")
 
 
 
@@ -605,7 +605,7 @@ class PhasicNet:
 
 
     def _instantiate_history( self, run_name: str | None = None,
-                            *, history_cfg: HistoryCfg | None = None, runmeta: RunMeta | None = None, cfg: Cfg = None) -> RunHistory:
+                            *, history_cfg: HistoryCfg | None = None, runmeta: RunMeta | None = None, cfg: DynamicsCfg = None) -> RunHistory:
         """Build the RunHistory for this run. history_cfg is BOTH the recording request and, stored
         with the finished history, the description of what it contains.
         'cfg' is the DERIVED cfg (what the run actually used); history is the only place it is persisted."""

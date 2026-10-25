@@ -11,7 +11,7 @@ import pytest
 from phasicnet import PhasicNet
 from runcfg import RunCfg, DataCfg, CheckpointCfg, HistoryCfg, ScorerCfg
 from test_sparse import protocol_for
-from cfg import Cfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
+from system.dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
 from original_dynamics import DeltaCurrentDense, DeltaCurrentSparse, LIFexact, AdaptiveThreshold, TraceSTDP, SparseTraceSTDP
 from original_dynamics import TestNoise
 from phases import DefaultPhase
@@ -39,7 +39,7 @@ def build(fmt="dense", update="timestep", post_offset=False):
     pnet.builder.spec_name = "system_spec"
     pnet.builder.realize(network_name="system_net", post_offset=post_offset, save=False)
     sparse = fmt == "sparse"
-    pnet.cfg = Cfg(
+    pnet.cfg = DynamicsCfg(
         simulation=SimulationCfg(dt=1.0, weights_format=fmt, update_on=update),
         synapse=SynapseCfg(b=None),
         integrator=IntegratorCfg(tau_mem=20.0, v_rest=-65.0, r=10.0),

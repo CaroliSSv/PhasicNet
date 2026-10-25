@@ -24,7 +24,7 @@ import logging
 import numpy as np
 from synapticindex import touched, elapsed, decayed  
 
-from cfg import SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg
+from dynamicscfg import SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg
 from states import RunContext, NeuronalState, SynapticState
 from dynamics import Synapse, Integrator, Threshold, Plasticity
 from deckers2022 import steps_of

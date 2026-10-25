@@ -12,7 +12,7 @@ import pytest
 
 from smoke_test import build, make_data
 from runcfg import RunCfg, DataCfg, CheckpointCfg
-from cfg import SimulationCfg
+from system.dynamicscfg import SimulationCfg
 from rnghandler import RNGHandler
 from paths import TRAIN_TEST_DIR
 from run import Run

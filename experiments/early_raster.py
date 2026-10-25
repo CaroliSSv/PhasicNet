@@ -1,7 +1,7 @@
 #raster_demo - build a network, run it, ARCHIVE everything, and write a spike raster.
 # Run: python raster_demo.py            (writes into ./runs/<run_name>/)
 #
-# The archive makes the raster reproducible: NetSpec (spec_id), Network (network_id), Cfg (cfg_id), History (run_id),
+# The archive makes the raster reproducible: NetSpec (spec_id), Network (network_id), DynamicsCfg (cfg_id), History (run_id),
 # plus manifest.yaml for the harness parameters none of those hashes cover.
 from __future__ import annotations
 from datetime import datetime
@@ -13,7 +13,7 @@ import yaml
 
 from phasicnet import PhasicNet, _generate_runmeta
 from settings import Experiment
-from cfg import (Cfg, RunCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
+from dynamicscfg import (DynamicsCfg, RunCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
                  PlasticityCfg, NoiseCfg, HistoryCfg, PhaseCfg)
 from synapses import BaseSynapse
 from integrators import LIFexact
@@ -44,9 +44,9 @@ HIST_NAME = "raster_hist"
 RUN_NAME = "raster_demo"
 
 
-def make_cfg() -> Cfg:
+def make_cfg() -> DynamicsCfg:
     """The runtime physics. Everything here is hashed into cfg_id."""
-    return Cfg(
+    return DynamicsCfg(
         simulation=SimulationCfg(dt=1.0),                                  ##ms per timestep
         synapse=SynapseCfg(b=None),                                        ##no synaptic bias
         integrator=IntegratorCfg(tau_mem=15.0, v_rest=-65.0, r=8.0),       ##ms, mV, MOhm
@@ -185,4 +185,4 @@ def main(out_root: str | Path = "runs"):
 
 
 if __name__ == "__main__":
-    main()
+    main()

@@ -31,7 +31,7 @@ from pathlib import Path
 ##experiments/__init__.py puts the code folders on sys.path (run from the repo root)
 import numpy as np
 from phasicnet import PhasicNet, RuntimeClasses
-from cfg import Cfg, SimulationCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, DataCfg, CheckpointCfg, ScorerCfg, HistoryCfg, ProtocolCfg
 from protocols import Protocol
 from nalsm2021 import (NALSMSynapseCfg, NALSMIntegratorCfg, NALSMThresholdCfg, NALSMPlasticityCfg, NALSMExpSynapse, NALSMExpSynapseSparse, NALSMLIF,
@@ -203,7 +203,7 @@ def build(*, model: str = "nalsm", n_liquid: int = N_LIQUID, grid=GRID, n_input:
                                             w_max=w_max, freeze=(), trace_inc=TRACE_INC, astro_tau=ASTRO_TAU, astro_w=aw, astro_bias_offset=0.0, decay=DECAY,
                                             astro=model == "nalsm", input_bounds=(-w_max, w_max))
         plasticity_cls = NALSMAstroSTDPSparse if sparse else NALSMAstroSTDP
-    pnet.cfg = Cfg(
+    pnet.cfg = DynamicsCfg(
         simulation=SimulationCfg(dt=dt_ms, weights_format=weights_format, update_on="hybrid_event" if sparse else "timestep"),
         synapse=NALSMSynapseCfg(b=None, tau_syn=TAU_SYN, cutoff=cutoff),
         integrator=NALSMIntegratorCfg(tau_mem=TAU_MEM, v_rest=V_RESET, r=1.0, b=BIAS, t_refrac=T_REFRAC),

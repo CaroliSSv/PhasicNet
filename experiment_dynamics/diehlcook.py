@@ -33,7 +33,7 @@ import logging
 
 import numpy as np
 
-from cfg import SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg
+from dynamicscfg import SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg
 from states import RunContext
 from dynamics import Synapse, Integrator, Threshold, Plasticity
 
@@ -151,7 +151,7 @@ class DCSynapseCfg(SynapseCfg):
     delay_max: float = 10.0
     v_reset_inh: Optional[float] = -45.0
     t_refrac_inh: float = 2.0
-    cfg_type: str = field(default="DCSynapseCfg", kw_only=True)   ##own name, so Cfg.load finds this subclass
+    cfg_type: str = field(default="DCSynapseCfg", kw_only=True)   ##own name, so DynamicsCfg.load finds this subclass
 
 
 class DCConductanceSynapse(Synapse):
@@ -309,7 +309,7 @@ class DCIntegratorCfg(IntegratorCfg):
     t_refrac: float = 5.0
     t_refrac_inh: float = 2.0
     v_reset_inh: Optional[float] = -45.0
-    cfg_type: str = field(default="DCIntegratorCfg", kw_only=True)   ##own name, so Cfg.load finds this subclass
+    cfg_type: str = field(default="DCIntegratorCfg", kw_only=True)   ##own name, so DynamicsCfg.load finds this subclass
 
 
 class DCLIFeuler(Integrator):
@@ -398,7 +398,7 @@ class DCThresholdCfg(ThresholdCfg):
     theta_init: float = 20.0
     offset: float = 20.0
     t_refrac_inh: float = 2.0
-    cfg_type: str = field(default="DCThresholdCfg", kw_only=True)   ##own name, so Cfg.load finds this subclass
+    cfg_type: str = field(default="DCThresholdCfg", kw_only=True)   ##own name, so DynamicsCfg.load finds this subclass
 
 
 class DCAdaptiveThreshold(Threshold):
@@ -503,7 +503,7 @@ class DCPlasticityCfg(PlasticityCfg):
     delay_syn_group: Optional[str] = "in_exc"
     delay_min: float = 0.0
     delay_max: float = 10.0
-    cfg_type: str = field(default="DCPlasticityCfg", kw_only=True)   ##own name, so Cfg.load finds this subclass
+    cfg_type: str = field(default="DCPlasticityCfg", kw_only=True)   ##own name, so DynamicsCfg.load finds this subclass
 
 
 class DCTripletSTDP(Plasticity):
