@@ -50,7 +50,7 @@ class Checkpoint:
 
 ## _NEUR_FIELDS = the State arrays a snapshot copies: the state one timestep HANDS to the next
 ## _UPD_FIELDS = () : UpdateState = per-step SCRATCH buffer: every module rewrites its buffer so a resumed run recomputes them
-_NEUR_FIELDS = ("V", "V_th", "Spikes", "pre_spike", "post_spike", "Since")  
+_NEUR_FIELDS = ("V", "Spikes", "pre_spike", "post_spike", "Since")  
 _UPD_FIELDS = ()      
 
 

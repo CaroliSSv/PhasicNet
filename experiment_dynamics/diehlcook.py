@@ -403,8 +403,7 @@ class DCAdaptiveThreshold(Threshold):
     D&C (exc):   spike iff v > theta - offset + v_thresh  AND not refractory ;  theta += theta_plus on spike ;  dtheta/dt = -theta/tau_theta (Euler)
     D&C (inh):   spike iff v > v_thresh_inh                AND not refractory                                       (no theta)
 
-    Theta is module-owned (it is read by nobody else), so NeuronalState.V_th is NOT requested: writes = ("rec_spikes",) only, and the
-    orchestra's "if "dV_th" in threshold.writes" stays False. Theta(0) = theta_init on exc rows, 0 on inh rows, and a fit-reset restores
+    Theta is module-owned (it is read by nobody else): writes = ("rec_spikes",) only. Theta(0) = theta_init on exc rows, 0 on inh rows, and a fit-reset restores
     exactly that through state_dict. float64: see the header. Strict ">" as in the script.
     Refractoriness: a spike passes only if the steps since the row's last spike >= first_allowed (exc 10, inh 4): Brian's
     next_allowed_spiketime = t_spike + refrac - dt/2. The script's extra "timer > refrac_e" is always true by then (header, deviation 3).

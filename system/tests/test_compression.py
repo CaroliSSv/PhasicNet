@@ -7,7 +7,7 @@ from modelinput import ModelInput   ##train() / _prep_run require a ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from system.dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
+from dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
                  PlasticityCfg, NoiseCfg, PhaseCfg)
 from runcfg import RunCfg, DataCfg, ScorerCfg, ProtocolCfg
 from protocols import HoldoutValidation
@@ -143,7 +143,7 @@ def test_run_is_bit_identical():
     assert not np.array_equal(a.ctx.syn.W, a._W0), "no learning happened, so the weight comparison proves little"
     assert np.array_equal(a.ctx.syn.W[offset:], b.ctx.syn.W), "learned weights differ"
     assert np.array_equal(a.ctx.neur.V[offset:], b.ctx.neur.V), "membrane potentials differ"
-    assert np.array_equal(a.ctx.neur.V_th[offset:], b.ctx.neur.V_th), "thresholds differ"
+    assert np.array_equal(a.threshold.V_th[offset:], b.threshold.V_th), "thresholds differ"
 
 
 def test_multi_epoch_bit_identical():
@@ -250,8 +250,8 @@ def test_state_arrays_use_the_right_coordinate_space():
     ##step_input is neither space: it holds ONLY the input nodes, straight from the dataloader.
     assert net_.ctx.upd.step_input.shape == (net_.ctx.net.n_input,)
 
-    for array in (net_.ctx.neur.V, net_.ctx.neur.V_th, net_.ctx.upd.I2V, net_.ctx.upd.dV,
-                  net_.ctx.upd.rec_spikes, net_.ctx.upd.dV_th,
+    for array in (net_.ctx.neur.V, net_.threshold.V_th, net_.ctx.upd.I2V, net_.ctx.upd.dV,
+                  net_.ctx.upd.rec_spikes, net_.threshold._dV_th,
                   net_.ctx.neur.post_spike, net_.plasticity.Post_trace):
         assert array.shape == (n_post,), "post-side array must be POST space"
 

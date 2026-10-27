@@ -12,7 +12,7 @@ from modelinput import ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from system.dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
 from network import _canon_to_specs, NeuronSpec
 from original_dynamics import TestNoise
 from phases import DefaultPhase
@@ -69,7 +69,7 @@ def _trace(run, frames):
     rows = []
     for _ in range(frames.shape[0]):
         run.step()
-        rows.append((ctx.upd.I2V.copy(), ctx.neur.V.copy(), ctx.neur.V_th.copy(), ctx.neur.Spikes[ctx.net.n_input:].copy()))
+        rows.append((ctx.upd.I2V.copy(), ctx.neur.V.copy(), run.threshold.V_th.copy(), ctx.neur.Spikes[ctx.net.n_input:].copy()))
     return rows
 
 
@@ -259,7 +259,7 @@ def test_heterogeneous_tau_is_keyed_and_in_range():
     ##the LSM baseline: every tau 30, no adaptation
     lsm = D.build(n_liquid=50, grid=(5, 5, 2), n_input=10, seed=4, weights_format="sparse", ei_balance=False, sfa=False, tau_heterogeneous=False, inputs_per_neurons=3)
     r = lsm._prep_run(data, D.runcfg(), test_data=data); r.set_mode("eval"); r.run_sample(data[0][0])
-    assert np.all(r.integrator.tau_row == 30.0) and np.all(r.ctx.neur.V_th == 15.0) and np.isinf(r.threshold.tau_row).all()
+    assert np.all(r.integrator.tau_row == 30.0) and np.all(r.threshold.V_th == 15.0) and np.isinf(r.threshold.tau_row).all()
 
 
 def test_table4_configs_and_inhibitory_input_factor():

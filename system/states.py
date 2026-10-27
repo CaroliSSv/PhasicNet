@@ -61,7 +61,6 @@ class NeuronalState:
     V: np.ndarray                               #float, (n_post):           (N,) or (n_rec,),   Membrane state (voltage)
     Spikes: np.ndarray                          #bool,  (N,),               Spike state
 
-    V_th: Optional[np.ndarray] = None           #float, (n_post):           (N,) or (n_rec,),   Optional adaptive threshold state 
     pre_spike: Optional[np.ndarray] = None      ##float, (N,),              Optional spike-trace state
     post_spike: Optional[np.ndarray] = None     ##float, (n_post):          (N,) or (n_rec,),  Optional spike-trace state
     Since: Optional[np.ndarray] = None          ##int64, (n_post):          steps since each ROW's last 
@@ -148,8 +147,7 @@ class UpdateState:
     #For debug; Check noise directly
     neur_noise: Optional[np.ndarray ] = None    ##float, (n_post,):           (N,) or (n_rec,)
     syn_noise: Optional[np.ndarray ]  = None    ##float, (n_post, N):         (N,N) or (n_rec, N)
-    
-    dV_th: Optional[np.ndarray] = None       #float, (n_post,):           (N,) or (n_rec,),   Optional adaptive_threshold Update
+
 
 
 

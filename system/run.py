@@ -201,8 +201,6 @@ class Run:
         ctx = self.ctx
         neur, upd = ctx.neur, ctx.upd
         neur.V[...] = self._integrator.v_rest
-        if neur.V_th is not None:
-            neur.V_th[...] = self._threshold.v_th
         neur.Spikes[...] = False
         upd.step_input[...] = False
         for array in (neur.pre_spike, neur.post_spike):
@@ -380,8 +378,6 @@ class Run:
     ###### THRESHOLD STEP:
         # (Update) threshold -> emit spikes (upd.rec_spikes)
         self.threshold.step(ctx)
-        if "dV_th" in self.threshold.writes:
-            np.add(neur.V_th, upd.dV_th, out=neur.V_th)      #neur.V_th += upd.dV_th IF adaptive threshold
         phase.post_threshold(ctx)
 
         neur.Spikes[net.n_input:] = upd.rec_spikes[net.rec_slice]
@@ -442,8 +438,6 @@ class Run:
 
     ###### THRESHOLD STEP:
         self.threshold.step(ctx)
-        if "dV_th" in self.threshold.writes:
-            np.add(neur.V_th, upd.dV_th, out=neur.V_th)
         phase.post_threshold(ctx)
         neur.Spikes[net.n_input:] = upd.rec_spikes[net.rec_slice]
         if neur.Since is not None:

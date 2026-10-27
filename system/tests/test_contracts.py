@@ -9,7 +9,7 @@ from modelinput import ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from system.dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
+from dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
                  PlasticityCfg, NoiseCfg, PhaseCfg)
 from runcfg import RunCfg, DataCfg
 from original_dynamics import DeltaCurrentDense, DeltaCurrentSparse, LIFexact, LIFeuler, AdaptiveThreshold, StaticThreshold, TraceSTDP, SparseTraceSTDP
@@ -24,7 +24,7 @@ N_INPUT, N_EXC, N_INH = 5, 9, 3
 ##Which SPACE each state array lives in. This table IS the contract; the code must match it.
 ##post side = run.ctx.net.n_post; the traces and the ltd scratch (_ltd) are module-owned
 NEURON_SPACE = ("Spikes", "pre_spike", "Pre_trace")
-POST_SIDE = ("V", "V_th", "post_spike", "I2V", "dV", "rec_spikes", "dV_th", "neur_noise", "Post_trace")
+POST_SIDE = ("V", "V_th", "post_spike", "I2V", "dV", "rec_spikes", "_dV_th", "neur_noise", "Post_trace")
 POST_BY_NEURON = ("W", "dW", "_ltd")          ##2-D: rows post side, columns NEURON space
 
 
@@ -273,10 +273,10 @@ def test_declared_requires_are_all_allocated():
 
 
 def test_unrequired_optional_arrays_are_not_allocated():
-    """The other half: StaticThreshold needs no V_th/dV_th, so nothing should be allocated for it."""
+    """The other half: StaticThreshold needs no V_th/dV_th, so nothing should be allocated for it (V_th is module-owned, never shared)."""
     run = build(False, threshold_cls=StaticThreshold)
-    assert run.ctx.neur.V_th is None
-    assert run.ctx.upd.dV_th is None
+    assert getattr(run.threshold, "V_th", None) is None
+    assert not hasattr(run.ctx.neur, "V_th") and not hasattr(run.ctx.upd, "dV_th")
 
 
 def test_configured_for_network_reports_the_subclass_not_the_base():

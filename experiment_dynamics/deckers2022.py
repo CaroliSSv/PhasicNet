@@ -309,11 +309,11 @@ class ELSMThresholdCfg(ThresholdCfg):
 class SFAThreshold(Threshold):
     """
     Deckers 2022 (ELSM):  spike iff v > v_th_i and not refractory ;  on spike: v_th_i += adpt_th (exc) ;  d v_th_i/dt = (v_th - v_th_i) / tau_sfa_i
-    The adaptive threshold is NeuronalState.V_th: the orchestra adds dV_th and resets V_th to v_th per sample.
+    The adaptive threshold V_th is module-owned (transient): step adds dV_th, reset_transient restores v_th per sample.
     Brian 2 order: the test uses V_th + decay, the increment comes after it. Both go out in ONE dV_th = decay + inc_row * spikes.
     """
-    writes = ("rec_spikes", "dV_th")
-    requires = ("V_th", "dV_th", "Since")
+    writes = ("rec_spikes",)
+    requires = ("Since",)
 
     def __init__(self, cfg: ELSMThresholdCfg, sim_cfg: SimulationCfg):
         if cfg is None or sim_cfg is None or sim_cfg.dt is None:
@@ -323,7 +323,7 @@ class SFAThreshold(Threshold):
         if cfg.sfa_range is not None and not (0 < cfg.sfa_range[0] <= cfg.sfa_range[1]):
             raise ValueError(f"SFAThreshold: sfa_range must be (lo, hi) with 0 < lo <= hi, got {cfg.sfa_range!r}.")
         self.dt = float(sim_cfg.dt)
-        self.v_th = float(cfg.v_th)                     ##the orchestra's reset_neuronal_state writes this scalar into V_th
+        self.v_th = float(cfg.v_th)                     ##V_th starts (and resets) at this scalar
         self.v_reset = np.float32(cfg.v_reset)
         self.tau_th = None if cfg.tau_th is None else float(cfg.tau_th)
         self.adpt_th = 0.0 if cfg.adpt_th is None else float(cfg.adpt_th)
@@ -337,8 +337,12 @@ class SFAThreshold(Threshold):
         self._refrac_row = None     ##(n_post,) int64
         self._gate = None           ##scratch bool
         self._drawn = False
+        self.V_th = None            ##(n_post,) float32 module-owned threshold (transient)
+        self._dV_th = None          ##(n_post,) float32 scratch: this step's threshold update
 
     def configure_for_network(self, net) -> None:
+        self.V_th = np.full(net.n_post, self.v_th, dtype=np.float32)
+        self._dV_th = np.zeros(net.n_post, dtype=np.float32)
         inh_value = 0.0 if self.sfa_exc_only else self.adpt_th
         self._inc_row = _row_vector(net, self.adpt_th, inh_value, dtype=np.float64)
         if net.n_post > net.n_rec:                      ##input rows (no post_offset) never adapt
@@ -365,14 +369,15 @@ class SFAThreshold(Threshold):
         upd, neur = ctx.upd, ctx.neur
         if not self._drawn:
             self._draw(ctx)
-        V_th = neur.V_th.astype(np.float64)
+        V_th = self.V_th.astype(np.float64)
         decay = (self.v_th - V_th) * self._dt_over_tau                     ##Euler, the state update's part (0 when tau is inf)
         thr = V_th + decay                                                  ##Brian 2 tests the UPDATED threshold
         np.greater_equal(neur.Since, self._refrac_row, out=self._gate)
         spikes = (neur.V.astype(np.float64) > thr) & self._gate
         upd.rec_spikes[...] = spikes
         decay += self._inc_row * spikes                                     ##the reset's part: v_th += adpt_th on adapting rows that spiked
-        upd.dV_th[...] = decay
+        self._dV_th[...] = decay
+        np.add(self.V_th, self._dV_th, out=self.V_th)                       ##V_th += dV_th
         #### MEMBRANE V RESET NOT APPLIED. Left to the orchestrator (scalar v_reset).
 
 

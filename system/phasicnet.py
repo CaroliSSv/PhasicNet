@@ -29,7 +29,7 @@ from abc import ABC
 
 from rnghandler import RNGHandler
 from builder import NetBuilder, Network
-from system.dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, HistoryCfg, DataCfg
 from meta import RunMeta
 from synapticindex import SynapticIndex
@@ -560,14 +560,13 @@ class PhasicNet:
 
         ###INITIATE NEURONAL STATE ARRAYS
         V = np.full(n_post, self.cfg.integrator.v_rest, dtype=np.float32)
-        V_th = _optional("V_th", self.cfg.threshold.v_th, True)    
 
         Spikes = np.zeros(n_total, dtype=bool)
         pre_spike = _optional("pre_spike", 0)        
         post_spike = _optional("post_spike", 0, True)
         Since = np.full(n_post, NEVER_SPIKED, dtype=np.int64) if "Since" in required_arrays else None  
         
-        neur = NeuronalState(V=V, Spikes=Spikes, pre_spike=pre_spike, post_spike=post_spike, V_th=V_th, Since=Since)
+        neur = NeuronalState(V=V, Spikes=Spikes, pre_spike=pre_spike, post_spike=post_spike, Since=Since)
 
         def _shapes(state) -> dict:
             return {f.name: (None if getattr(state, f.name) is None else getattr(state, f.name).shape) for f in fields(state)}
@@ -589,14 +588,12 @@ class PhasicNet:
         dV = np.zeros(n_post, dtype=np.float32)
         rec_spikes = np.zeros(n_post, dtype=bool)
 
-        dV_th = _optional("dV_th", 0, True)
-
         dW = np.zeros((n_post, n_total), dtype=np.float32) if self.cfg.simulation.weights_format == "dense" else None
 
         neur_noise = np.zeros(n_post, dtype=np.float32)
 
         upd = UpdateState(step_input=step_input, dV=dV, I2V=I2V, dW=dW, rec_spikes=rec_spikes,
-                          neur_noise=neur_noise, dV_th=dV_th)
+                          neur_noise=neur_noise)
         logger.debug("Instantiated Update-state arrays successfully: %s", _shapes(upd))
         
         ctx = RunContext(sim=sim, upd=upd, neur=neur, syn=syn, net=self.network, rng=self.rng)

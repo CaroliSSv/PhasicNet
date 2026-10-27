@@ -11,7 +11,7 @@ import pytest
 from phasicnet import PhasicNet
 from runcfg import RunCfg, DataCfg, CheckpointCfg, HistoryCfg, ScorerCfg
 from test_sparse import protocol_for
-from system.dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
 from original_dynamics import DeltaCurrentDense, DeltaCurrentSparse, LIFexact, AdaptiveThreshold, TraceSTDP, SparseTraceSTDP
 from original_dynamics import TestNoise
 from phases import DefaultPhase
@@ -206,7 +206,7 @@ def test_params_and_state_dict_split_by_type():
     p, sd = run.plasticity.params, run.plasticity.state_dict
     assert "tau_pretrace" in p and "A_ltp" in p and "Pre_trace" not in p
     assert set(sd) == {"Pre_trace", "Post_trace", "eta_pre"} and "_ltd" not in sd
-    assert run.threshold.state_dict == {} or "Refrac_count" in run.threshold.state_dict
+    assert set(run.threshold.state_dict) == {"V_th"} and "_dV_th" not in run.threshold.state_dict     ##AdaptiveThreshold's module-owned threshold
 
 
 

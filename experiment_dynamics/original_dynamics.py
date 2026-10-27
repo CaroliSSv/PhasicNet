@@ -196,8 +196,8 @@ class StaticThreshold(Threshold):
 class AdaptiveThreshold(Threshold):
     """Adaptive spiking threshold mechanism.""" #βθ
     
-    writes = ("rec_spikes", "dV_th")
-    requires = ("V_th", "dV_th")
+    writes = ("rec_spikes",)
+    requires = ()
     def __init__(self, cfg: ThresholdCfg, sim_cfg:SimulationCfg):
         if cfg is None:
             raise ValueError("AdaptiveThreshold requires ThresholdCfg.")
@@ -215,30 +215,39 @@ class AdaptiveThreshold(Threshold):
         self.tau_th = np.float32(cfg.tau_th)        ##for derived_cfg (storage)
         self.dt_tau = np.float32(sim_cfg.dt/cfg.tau_th)
         self.adpt_th = np.float32(cfg.adpt_th)  ##Threshold adaption on spike
+        self.V_th = None        ##module-owned threshold per neuron (transient: reset_transient restores v_th)
+        self._dV_th = None      ##scratch: this step's threshold update
 
+    def configure_for_network(self, net) -> None:
+        self.V_th = np.full(net.n_post, self.v_th, dtype=np.float32)
+        self._dV_th = np.zeros(net.n_post, dtype=np.float32)
 
-    def step(self, ctx: RunContext) -> None:
+    def adapt(self, ctx: RunContext) -> None:
         """
         Adaptive threshold update:  
         Decay:              dV_th ← (v_th - V_th) * dt / tau_th                    
-        Decay code:   upd.dV_th = (self.v_th - neur.V_th) * dt_tau
-        Spikeadaption:          upd.dV_th + self.adpt_th  #adaption increment on spike
+        Decay code:   self._dV_th = (self.v_th - self.V_th) * dt_tau
+        Spikeadaption:          self._dV_th + self.adpt_th  #adaption increment on spike
         """
         upd = ctx.upd
         neur = ctx.neur
 
         # Threshold decay for all neurons
-        np.subtract(self.v_th, neur.V_th, out=upd.dV_th)                   # upd.dV_th = self.v_th - neur.V_th
-        np.multiply(upd.dV_th, self.dt_tau, out=upd.dV_th)                  # upd.dV_th *= self.dt_tau
+        np.subtract(self.v_th, self.V_th, out=self._dV_th)                   # self._dV_th = self.v_th - self.V_th
+        np.multiply(self._dV_th, self.dt_tau, out=self._dV_th)                  # self._dV_th *= self.dt_tau
 
         #Emit spikes
-        np.greater_equal(neur.V, neur.V_th, out=upd.rec_spikes)              # -> BOOL; spike=TRUE=1 per neuron
+        np.greater_equal(neur.V, self.V_th, out=upd.rec_spikes)              # -> BOOL; spike=TRUE=1 per neuron
 
         #Spike adaption to spiking neurons
-        np.add(upd.dV_th, self.adpt_th, out=upd.dV_th, where=upd.rec_spikes)   # upd.dV_th[upd.rec_spikes] += self.adpt_th 
+        np.add(self._dV_th, self.adpt_th, out=self._dV_th, where=upd.rec_spikes)   # self._dV_th[upd.rec_spikes] += self.adpt_th 
 
-        ###Neat pytorch version for later: upd.dV_th.add_(upd.rec_spikes.to(upd.dV_th.dtype), alpha=self.th_adaption)
+        ###Neat pytorch version for later: self._dV_th.add_(upd.rec_spikes.to(self._dV_th.dtype), alpha=self.th_adaption)
         #### NOTE MEMBRANE V RESET NOT APPLIED. This is left to the orchestrator
+
+    def step(self, ctx: RunContext) -> None:
+        self.adapt(ctx)
+        np.add(self.V_th, self._dV_th, out=self.V_th)      ##V_th += dV_th
 
 
 class RefractoryAbs(AdaptiveThreshold):
@@ -251,8 +260,8 @@ class RefractoryAbs(AdaptiveThreshold):
         _refrac_count = COUNTDOWN of refrac_step until refrac_period ends
     """
 
-    writes = ("rec_spikes", "dV_th")
-    requires = ("V_th", "dV_th")
+    writes = ("rec_spikes",)
+    requires = ()
 
     def __init__(self, cfg: ThresholdCfg, sim_cfg: SimulationCfg):
         super().__init__(cfg, sim_cfg)
@@ -263,20 +272,22 @@ class RefractoryAbs(AdaptiveThreshold):
         self.Refrac_count = None                                     ##module-lvl dynamical state (state_dict)
 
     def configure_for_network(self, net) -> None:
+        super().configure_for_network(net)
         self.Refrac_count = np.zeros(net.n_post, dtype=np.int32)
 
     def step(self, ctx: RunContext) -> None:
-        super().step(ctx) #AdaptiveThreshold step
+        self.adapt(ctx) #AdaptiveThreshold spikes + threshold update (V_th committed below, after the refractory correction)
         upd = ctx.upd
         refractory = self.Refrac_count > 0
         suppressed_spikes = upd.rec_spikes & refractory
         if suppressed_spikes.any():
             upd.rec_spikes[suppressed_spikes] = False
-            np.subtract(upd.dV_th, self.adpt_th, out=upd.dV_th, where=suppressed_spikes)  #upd.dV_th[suppressed_spikes] -= self.adpt_th 
+            np.subtract(self._dV_th, self.adpt_th, out=self._dV_th, where=suppressed_spikes)  #self._dV_th[suppressed_spikes] -= self.adpt_th 
             ##NOTE the subtract above UNDOES computation. Better alternative -> NEW class that AVOIDS add-then-subtract**  later
         
         np.maximum(self.Refrac_count - 1, 0, out=self.Refrac_count) ##Countdown
         self.Refrac_count[upd.rec_spikes] = self.refrac_steps #start new countdown on spikes
+        np.add(self.V_th, self._dV_th, out=self.V_th)      ##V_th += dV_th
         ##NOTE the CURRENT refrac does a NUMBER of gather/scatter ops. CAN this be bypassed? ->probably not since syns are scattered, as are spikes
 
 
