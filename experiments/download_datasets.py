@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 import numpy as np
 from paths import RAW_DIR
-from utils import import_mnist_digits, import_fmnist
+from utils import import_mnist
 
 
 ALL = ("mnist", "fmnist", "shd", "nmnist", "dvsgesture")
@@ -25,19 +25,18 @@ def tonic_set(name: str):
 def say(msg):
     print(f"{datetime.now():%H:%M:%S}  {msg}", flush=True)    
 
-
 def main(names=ALL):
     for name in names:
         say(f"{name} ...")
         try:
             if name == "mnist":
-                with np.load(import_mnist_digits()) as z:
+                with np.load(import_mnist("digits")) as z:
                     out = {"train": len(z["y_train"]), "test": len(z["y_test"])}
             elif name == "fmnist":
-                with np.load(import_fmnist()) as z:
+                with np.load(import_mnist("fashion")) as z:
                     out = {"train": len(z["y_train"]), "test": len(z["y_test"])}
             else:
                 out = tonic_set(name)
             say(f"{name} OK: {out}")
-        except Exception as e:          ##one failed download must not stop the others; run main((name,)) again for it
+        except Exception as e:          ##catch exception to avoid one download fail stopping others
             say(f"{name} FAILED: {e!r}")

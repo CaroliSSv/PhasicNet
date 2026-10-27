@@ -91,29 +91,26 @@ def _filepath(file:str|Path, default_dir:Path = EXPORT_DIR) -> Path:
         return default_dir/file
     return file
 
-def import_mnist_digits(save_to: str | Path | None = None) -> Path:
-    """Download MNIST if needed and return local file path.
-    overwrite global MNIST_PATH if save_to provided
+def import_mnist(kind: Literal["digits", "fashion"] = "digits", save_to: str | Path | None = None) -> Path:
+    """Download MNIST digits or Fashion-MNIST if needed and return local file path (mnist.npz / fmnist.npz, same keys: x_train, y_train, x_test, y_test).
+    overwrite global MNIST_PATH / FMNIST_PATH if save_to provided
     """
-    path = MNIST_PATH if save_to is None else Path(save_to) / "mnist.npz"
+    default, name = {"digits": (MNIST_PATH, "MNIST"), "fashion": (FMNIST_PATH, "Fashion-MNIST")}[kind]
+    path = default if save_to is None else Path(save_to) / default.name
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    if not path.exists():
-        logger.info("Downloading MNIST to %s", path)
+    if path.exists():
+        logger.info("%s from: %s", name, path)
+        return path
+    logger.info("Downloading %s to %s", name, path)
+    if kind == "digits":
         urlretrieve(MNIST_URL, path)
     else:
-        logger.info("MNIST from: %s", path)
-
+        _download_fmnist(path)
     return path
 
-def import_fmnist(save_to: str | Path | None = None) -> Path:
-    """Download Fashion-MNIST if needed -> fmnist.npz with mnist.npz's keys (x_train, y_train, x_test, y_test). Same use as import_mnist_digits."""
-    path = FMNIST_PATH if save_to is None else Path(save_to) / "fmnist.npz"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        logger.info("Fashion-MNIST from: %s", path)
-        return path
-    logger.info("Downloading Fashion-MNIST to %s", path)
+def _download_fmnist(path: Path) -> None:
+    """Fashion-MNIST exists online only as 4 idx files -> packed into one npz with mnist.npz's keys."""
     arrays = []
     for name in ("train-labels-idx1-ubyte.gz", "train-images-idx3-ubyte.gz", "t10k-labels-idx1-ubyte.gz", "t10k-images-idx3-ubyte.gz"):
         gz = path.parent / f"fmnist_{name}"
@@ -124,7 +121,6 @@ def import_fmnist(save_to: str | Path | None = None) -> Path:
         gz.unlink()
     y, x, yt, xt = arrays
     np.savez_compressed(path, x_train=x, y_train=y, x_test=xt, y_test=yt)
-    return path
 
 
 

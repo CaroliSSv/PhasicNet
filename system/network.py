@@ -7,7 +7,7 @@ from meta import NetMeta
 import numpy as np
 
 from paths import EXPORT_DIR
-from utils import _write_json_yaml, _write_net_npz, _hash
+from utils import _write_json_yaml, _write_net_npz, _hash, _read_net_npz, _read_json_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -448,6 +448,11 @@ class Network:
                              f"Disagreements: {mismatched}..")
 
         return network
+
+    @classmethod
+    def load_file(cls, file, fmt=None) -> Network:
+        syntype, pre_idx, post_idx, W0, positions = _read_net_npz(file)   # already swaps .json -> .npz
+        return cls.load(_read_json_yaml(file, fmt), syntype, pre_idx, post_idx, W0, positions)
 
 
 
