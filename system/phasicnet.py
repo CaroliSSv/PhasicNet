@@ -34,7 +34,7 @@ from runcfg import RunCfg, HistoryCfg, DataCfg
 from meta import RunMeta
 from synapticindex import SynapticIndex
 from synapticindex import SynapticIndex
-from utils import _inf_safe, _hash, _read_json_yaml, _read_net_npz, _write_json_yaml, _filepath, _read_history_npz, _write_history_npz, _COMPARISONS, _capitalize_strip_name   
+from utils import _inf_safe, _hash, _hash_array, _read_json_yaml, _read_net_npz, _write_json_yaml, _filepath, _read_history_npz, _write_history_npz, _COMPARISONS, _capitalize_strip_name   
 from paths import EXPORT_DIR
 from datahandler import DataHandler, _dataset_hash
 from modelinput import ModelInput  
@@ -115,7 +115,7 @@ def _derive_cfg(cfg: DynamicsCfg, modules: dict) -> DynamicsCfg:
 
 
 def _generate_runmeta(cfg_name, run_name, derived_cfg: DynamicsCfg, original_cfg: DynamicsCfg, runcfg: RunCfg,
-                      network_name, network_id, rng_spec, dataset_id=None, dataset_name=None, dataset_id_n_samples=None) -> RunMeta:
+                      network_name, network_id, rng_spec, dataset_id=None, dataset_name=None, dataset_id_n_samples=None, split_id=None) -> RunMeta:
     """
     Meta to identify a run
     Args:
@@ -129,7 +129,7 @@ def _generate_runmeta(cfg_name, run_name, derived_cfg: DynamicsCfg, original_cfg
     ##the FINAL-REFIT protocol fixed by RunCfg.
     return RunMeta(cfg_name=cfg_name, cfg_id=cfg_id, derived_cfg_id=derived_cfg_id, run_name=run_name, run_id=run_id,
                    network_name=network_name, network_id=network_id, dataset_name=dataset_name, dataset_id=dataset_id,
-                   dataset_id_n_samples=dataset_id_n_samples, globalseed=rng_spec["seed"], rng_spec=rng_spec)   
+                   dataset_id_n_samples=dataset_id_n_samples, split_id=split_id, globalseed=rng_spec["seed"], rng_spec=rng_spec)   
 @dataclass(frozen=True)
 class RuntimeClasses:
     """
@@ -717,18 +717,20 @@ class PhasicNet:
         ##THE ONE-TIME TEST/TRAIN SPLIT --  Held out identically across every run, --> avoids dataleakage. 
         dataset_id, dataset_id_n_samples = _dataset_hash(data)
         if test_data is None:
-            train, test = datahandler.split_test_train(data, dataset_id=dataset_id, data_cfg=runcfg.data, rng=self.rng)
+            train, test = datahandler.split_test_train(data, dataset_id=dataset_id, data_cfg=runcfg.data)
         else:
             train, test = data.subset(np.arange(len(data)), "train"), test_data.subset(np.arange(len(test_data)), "test")  
 
         test_id = dataset_id if test_data is None else _dataset_hash(test_data)[0]
+        split_id = _hash_array(test.index, digest_size=8) if test_data is None else test_id
         train = datahandler.pick(train, runcfg.data.n_train, data_cfg=runcfg.data, rng=self.rng.rng("data", f"pick_train:{dataset_id}"))
         if test is not None:
             test = datahandler.pick(test, runcfg.data.n_test, data_cfg=runcfg.data, rng=self.rng.rng("data", f"pick_test:{test_id}"))
 
         runmeta = _generate_runmeta(cfg_name=cfg_name, run_name=run_name, derived_cfg=derived_cfg, original_cfg=self.cfg,
                                     runcfg=runcfg, network_name=self.network.network_name, network_id=self.network.network_id,
-                                    rng_spec=self.rng.rng_spec, dataset_id=dataset_id, dataset_name=dataset_name, dataset_id_n_samples=dataset_id_n_samples)
+                                    rng_spec=self.rng.rng_spec, dataset_id=dataset_id, dataset_name=dataset_name, dataset_id_n_samples=dataset_id_n_samples,
+                                    split_id=split_id)
         history = self._instantiate_history(run_name, runmeta=runmeta, history_cfg=runcfg.history, cfg=derived_cfg)
 
         run = Run(synapse=synapse, integrator=integrator, threshold=threshold, plasticity=plasticity, noise=noise, phases=phases,

@@ -22,11 +22,14 @@ import time
 import numpy as np
 
 from paths import TRAIN_TEST_DIR
+from rnghandler import RNGHandler
 from states import RunContext
 from modelinput import _dataset_hash   
 from modelinput import ModelInput      
 
 logger = logging.getLogger(__name__)
+
+SPLIT_SEED = 0      ##the test split's OWN seed, not the run's: the same raw data gives the same split on every computer
 
 
 
@@ -87,7 +90,7 @@ class DataHandler:
    ######################################################################
 ##########################  TEST/TRAIN split ONCE & reuse  ###################
 
-    def split_test_train(self, data: ModelInput, *, dataset_id: str, data_cfg, rng,
+    def split_test_train(self, data: ModelInput, *, dataset_id: str, data_cfg,
                          save_dir: Path | None = None) -> tuple[ModelInput, ModelInput]:   
         """
         Hold out a TEST set ONCE per raw dataset, and reuse it for every Run afterwards.
@@ -122,6 +125,7 @@ class DataHandler:
                 f"make_test_split=False. Either preprocess a test set first, or set it True.")
 
         labels = data.labels()      
+        rng = RNGHandler(SPLIT_SEED)
         gen = rng.rng("data", f"test_split:{dataset_id}")     ##keyed on the dataset: same data -> same split, always
         if stratify:
             train_idx, test_idx = _stratified_holdout(labels, fraction, gen)

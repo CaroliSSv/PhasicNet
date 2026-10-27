@@ -38,6 +38,7 @@ class RunMeta:
     dataset_name: str = None     
     dataset_id: str = None
     dataset_id_n_samples: int = None
+    split_id: str = None         ##which TEST set: hash of the held-out indices (own split), or the given test set's dataset hash
     globalseed:int = None
     rng_spec:Dict = None
 

@@ -109,9 +109,8 @@ def test_train_and_test_never_overlap():
 def test_stored_split_is_reused_only_under_the_policy_it_was_made_with(tmp_path):
     """A stored split is reused only under the same test_fraction / stratified; a change raises naming both values and the spec file."""
     from datahandler import DataHandler
-    from rnghandler import RNGHandler
     dh, data = DataHandler(), make_data()
-    kw = dict(dataset_id="a7", rng=RNGHandler(SEED), save_dir=tmp_path)
+    kw = dict(dataset_id="a7", save_dir=tmp_path)
     tr, te = dh.split_test_train(data, data_cfg=DataCfg(test_fraction=0.25, stratify=True), **kw)
     tr2, te2 = dh.split_test_train(data, data_cfg=DataCfg(test_fraction=0.25, stratify=True), **kw)        ##the same policy: reused verbatim
     assert np.array_equal(tr.index, tr2.index) and np.array_equal(te.index, te2.index) and len(te) == 4 and (tmp_path / "split_a7.json").exists()
@@ -126,11 +125,19 @@ def test_every_test_splits_into_its_own_store():
     """conftest redirects datahandler.TRAIN_TEST_DIR to a fresh dir per test, so no test reads or writes datasets/train_test/."""
     import datahandler, paths
     from datahandler import DataHandler
-    from rnghandler import RNGHandler
     store = datahandler.TRAIN_TEST_DIR
     assert store != paths.TRAIN_TEST_DIR and paths.ROOT_DIR not in store.parents and not list(store.iterdir())   ##outside the tree, and empty at the start of a test
-    DataHandler().split_test_train(make_data(), dataset_id="ownstore", data_cfg=DataCfg(test_fraction=0.25), rng=RNGHandler(SEED))
+    DataHandler().split_test_train(make_data(), dataset_id="ownstore", data_cfg=DataCfg(test_fraction=0.25))
     assert (store / "split_ownstore.json").exists() and not (paths.TRAIN_TEST_DIR / "split_ownstore.json").exists()
+
+def test_test_split_is_the_same_on_every_computer(tmp_path):
+    """The split uses SPLIT_SEED, not the run's seed: made twice from scratch -> the same test set; RunMeta.split_id names it."""
+    from datahandler import DataHandler
+    dh, data, dc = DataHandler(), make_data(), DataCfg(test_fraction=0.25)
+    a, b = (dh.split_test_train(data, dataset_id="s", data_cfg=dc, save_dir=tmp_path / d)[1].index for d in ("a", "b"))
+    assert np.array_equal(a, b)
+
+    assert trained().runmeta.split_id == trained(epochs=1).runmeta.split_id is not None      ##the stored split is reused: same id
 
 def test_phasicnet_retains_no_run_state():
     """The assembler is stateless w.r.t. runs: cleanup-by-design."""
