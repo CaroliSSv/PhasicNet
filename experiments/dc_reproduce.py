@@ -45,6 +45,7 @@ from modelinput import ModelInput
 from diehl_cook_2015 import build, fresh_network, DT_MS, T_PRESENT_MS, T_REST_MS, INPUT_INTENSITY, SEED, DCPoissonImages, mnist_input
 from dc_protocol import DCProtocol, DCProtocolCfg                   ##the protocol itself (TRAIN / ASSIGN / TEST / REPORT)
 from phasicnet import PhasicNet
+from network import Network
 
 logger = logging.getLogger("dc_reproduce")
 
@@ -96,8 +97,8 @@ def load_trained(run_dir: str | Path, *, freeze_theta: bool = True):
     proto = _read_json_yaml(run_dir / "protocol.json")
     pnet = build(784, proto["n_exc"], seed=proto["seed"], norm_target=78.0)
     run = pnet._prep_run(mnist_input(np.zeros((4, 28, 28), np.uint8), np.arange(4) % 2), _runcfg())   ##four blank digits: the Run only needs data to assemble
-    saved = PhasicNet(); saved.load_net(run_dir / "network.json")      ##the run's own saved network (network.json/.npz), through the framework loader
-    saved_id = saved.network.network_id
+    saved = Network.load_file(run_dir / "network.json")      ##the run's own saved network (network.json/.npz)
+    saved_id = saved.network_id
     if run.runmeta.network_id != saved_id:
         raise RuntimeError(f"rebuilt network {run.runmeta.network_id} != saved {saved_id}: build() or its defaults changed since the run")
     restore_snapshot(run.ctx, load_trained_model(next(run_dir.glob("TrainedModel_*.npz"))), run.modules)
