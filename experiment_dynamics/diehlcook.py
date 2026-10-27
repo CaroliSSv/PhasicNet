@@ -235,11 +235,6 @@ class DCConductanceSynapse(Synapse):
         """New delays at the next step, over the nonzero weights of that moment (the script redraws at every network creation)."""
         self.Delay_drawn[0] = 0
 
-    def restart(self) -> None:
-        """Transient state of a fresh Brian network (ge = gi = 0, empty delay ring); W and the delays are kept.
-        SUPERSEDED 15.10 (protocol) by Run.reset_transient (state_dict minus "persistent", generic); kept, nothing calls it."""
-        self.Ge[:] = 0.0; self.Gi[:] = 0.0; self.Buf[:] = 0.0; self.Cur[0] = 0   
-
     def step(self, ctx: RunContext) -> None:
         upd, neur, syn, net = ctx.upd, ctx.neur, ctx.syn, ctx.net
         W, S = syn.W, neur.Spikes
@@ -588,12 +583,6 @@ class DCTripletSTDP(Plasticity):
     def redraw_delays(self) -> None:
         """As DCConductanceSynapse.redraw_delays (same stream, same W -> same matrices)."""
         self.Delay_drawn[0] = 0
-
-    def restart(self) -> None:
-        """Fresh network: traces, records and spike history empty. Superseded by Run.reset_transient; kept, nothing calls it."""
-        for a in (self.Pre, self.Post1, self.Post2, self.PreRec, self.Post1Rec):
-            a[...] = 0.0
-        self.PreHist[...] = False; self.Clock[0] = 0
 
     def _draw(self, ctx) -> None:
         if not ctx.syn.syn_mask[self._proj.post, self._proj.pre].all():

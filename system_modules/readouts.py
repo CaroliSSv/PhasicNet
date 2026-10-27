@@ -9,7 +9,7 @@ from typing import Optional
 import logging
 
 import numpy as np
-from scorer import confusion_matrix
+from scorer import confusion_matrix, accuracy
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ def fit_evaluate(X_train, y_train, X_test, y_test, *, X_val=None, y_val=None, **
     X_val / y_val = an explicit validation set (passed to fit); "val_acc" is then reported too."""
     ro = LogisticReadout(**readout_kw).fit(X_train, y_train, X_val, y_val)
     pred_test = ro.predict(X_test)
-    return {"train_acc": 100.0 * ro.score(X_train, y_train), "test_acc": 100.0 * float(np.mean(pred_test == np.asarray(y_test))),
+    return {"train_acc": 100.0 * ro.score(X_train, y_train), "test_acc": accuracy(y_test, pred_test),
             "val_acc": None if X_val is None else 100.0 * ro.score(X_val, y_val),
             "confusion_test": confusion_matrix(y_test, pred_test, int(ro.classes_.max()) + 1), "classes": ro.classes_, "pred_test": pred_test,
             "final_loss": ro.loss_[-1] if ro.loss_ else None, "readout": ro}

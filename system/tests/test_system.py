@@ -330,8 +330,8 @@ def test_refractory_abs_names_itself_and_runmeta_counts_samples_as_int():
 def test_scratch_scripts_import_under_the_new_layout(script):
     """The scratch scripts import under the current layout (non-__main__ name, so nothing runs); their bodies are not checked."""
     path = ROOT_DIR / "experiments" / script
-    code = f"import runpy; runpy.run_path({str(path)!r}, run_name='import_check')"
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=300, env={**os.environ, "MPLBACKEND": "Agg"})
+    code = f"import experiments, runpy; runpy.run_path({str(path)!r}, run_name='import_check')"     ##through the entry door, as the scripts are run
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=300, env={**os.environ, "MPLBACKEND": "Agg"}, cwd=ROOT_DIR)
     assert r.returncode == 0, r.stderr[-2000:]
 
 

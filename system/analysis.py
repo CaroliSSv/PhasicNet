@@ -342,7 +342,7 @@ def protocol_scores(run_dir: str | Path, *, n_classes: int = 10) -> dict:  ##NOT
         confusion           (passes, n_classes, n_classes), row = true, column = predicted
         neurons_per_class   how many exc neurons were assigned to each digit (-1 = never fired: excluded)
     """
-    from scorer import dc_assign_labels, dc_rank_predict, confusion_matrix
+    from scorer import dc_assign_labels, dc_rank_predict, confusion_matrix, accuracy
     run_dir = Path(run_dir)
     z = _read_responses_npz(run_dir / "responses.npz")
     r_as, y_as, r_te, y_te = z["resp_assign"], z["y_assign"], z["resp_test"], z["y_test"]
@@ -350,7 +350,7 @@ def protocol_scores(run_dir: str | Path, *, n_classes: int = 10) -> dict:  ##NOT
     acc, cms = [], []
     for r in r_te:                                       ##one entry per test pass
         yhat = dc_rank_predict(r, assign, n_classes)
-        acc.append(float((yhat == y_te).mean() * 100.0)); cms.append(confusion_matrix(y_te, yhat, n_classes))
+        acc.append(accuracy(y_te, yhat)); cms.append(confusion_matrix(y_te, yhat, n_classes))
     return {"accuracy_per_pass": acc, "accuracy_mean": float(np.mean(acc)), "confusion": np.stack(cms),
             "neurons_per_class": np.bincount(assign[assign >= 0], minlength=n_classes).tolist(), "unassigned": int((assign < 0).sum())}
 

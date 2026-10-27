@@ -2,21 +2,17 @@
 #
 #NOT a unit test: walks the public API once and asserts each stage is structurally sane, plus the one equivalence
 # that must never silently break: sparse-timestep == sparse-event, bit for bit.
-# Run: python experiments/smoke_test.py
+# Run (from the repo root): python -c "import experiments, smoke_test; smoke_test.main()"
 from __future__ import annotations
-import logging, sys
-from pathlib import Path
-_ROOT = Path(__file__).resolve().parents[1]     ##experiments/<script> -> PhasicNet/
-sys.path[:0] = [str(_ROOT / "system"), str(_ROOT / "system_modules"), str(_ROOT / "experiment_dynamics"), str(_ROOT / "experiments")]
 import numpy as np
 from phasicnet import PhasicNet
 from dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
-from runcfg import RunCfg, DataCfg
+from runcfg import RunCfg, DataCfg, ProtocolCfg
+from modelinput import ModelInput
 from original_dynamics import DeltaCurrentDense, DeltaCurrentSparse, LIFexact, AdaptiveThreshold, TraceSTDP, SparseTraceSTDP
 from original_dynamics import TestNoise
 from phases import DefaultPhase
 
-logging.basicConfig(level=logging.ERROR)
 SEED, T, N_SAMPLES = 7, 30, 24
 
 
@@ -42,17 +38,17 @@ def build(fmt="dense", update="timestep"):
 
 def make_data():
     rng = np.random.default_rng(0)
-    return [((rng.random((T, 8)) < (0.25 if i % 2 == 0 else 0.55)), i % 2) for i in range(N_SAMPLES)]
+    return ModelInput.from_tonic([((rng.random((T, 8)) < (0.25 if i % 2 == 0 else 0.55)), i % 2) for i in range(N_SAMPLES)])     ##data enters through ModelInput
 
 
 def one(fmt, update, tag):
     p = build(fmt, update)
-    run = p.train(make_data(), RunCfg(epochs=2, k_fold=2, data=DataCfg(test_fraction=0.25)), save_run=False)
+    run = p.train(make_data(), RunCfg(protocol=ProtocolCfg(epochs=2, val_split=0.25), data=DataCfg(test_fraction=0.25)), save_run=False)     ##the current API (HoldoutValidation)
     r, meta = run.report, run.runmeta
     ##structural assertions -- each names what breaking it would mean
     assert not hasattr(p, "ctx") or getattr(p, "ctx", None) is None, "PhasicNet retained a ctx (assembler must hold no run state)"
     assert run.test_set is not None and not (set(run.train_set.index.tolist()) & set(run.test_set.index.tolist())), "TRAIN AND TEST OVERLAP"
-    assert len(r["fold_scores"]) == 2 and r["score"] <= max(r["fold_scores"]) + 1e-9, "trial score must be the MEAN over fits, never the max"
+    assert len(r["fold_scores"]) == 1 and r["score"] <= max(r["fold_scores"]) + 1e-9, "trial score must be the MEAN over fits, never the max"
     assert np.all(np.isfinite(run.ctx.syn.W)), "NaN in W"
     assert run.history.spike_i().size > 0, "network never fired"
     assert meta.cfg_id != meta.derived_cfg_id and run.history.derived_cfg.plasticity.w_min == -np.inf, "derived cfg did not record the None->-inf clamp"
@@ -62,7 +58,7 @@ def one(fmt, update, tag):
     return run.ctx.syn.W.copy(), run.history.spike_i().copy(), r["score"]
 
 
-if __name__ == "__main__":
+def main():
     print("SMOKE TEST")
     Wd, Sd, sd = one("dense",  "timestep", "dense/timestep")
     Wt, St, st = one("sparse", "timestep", "sparse/timestep")
@@ -73,3 +69,7 @@ if __name__ == "__main__":
     ##dense vs sparse: same model, different float accumulation (BLAS f32 vs bincount f64); identical here, may drift on long runs.
     print(f"  dense == sparse score           : {sd == st}   (float-order dependent; equality is NOT required)")
     print("\nSMOKE TEST PASSED")
+
+
+if __name__ == "__main__":
+    main()

@@ -20,7 +20,7 @@
 # rest (the paper gives no rest period). runcfg(present_ms=, rest_ms=) sets the protocol's window; the dataset must be built with the same values.
 #
 #READOUT: DCProtocol's (assignment + rank vote) is what the protocol scores; the paper's proportion-weighted scheme (BindsNET's) is computed
-# afterwards from the saved responses by proportion_weighting() below and reported beside it.
+# inside the run by ZhangProtocol.extra_readouts() below (scorer.proportion_weighting on the same responses) and reported beside it.
 #
 #RUN (from the repo root):  python -c "import experiments, zhang_2025; zhang_2025.main(n_train=1000, n_assign=1000, n_test=1000, tag='t1')"
 # In parallel: load=dc_reproduce.mnist_dataset, load_kw present_ms / rest_ms. Runtime classes: the pack ZHANG_CLASSES.
@@ -40,8 +40,7 @@ from zhang2025 import ZhangSynapseCfg, ZhangDendriticSynapse, ZhangThresholdCfg,
 from original_dynamics import TestNoise
 from phases import DefaultPhase
 from paths import RAW_DIR, NETWORKS_DIR, RUNS_DIR
-from utils import _read_json_yaml, _write_json_yaml, _read_responses_npz
-from scorer import proportion_weighting
+from scorer import proportion_weighting, accuracy
 from modelinput import ModelInput
 from preprocessing import load_mnist
 from diehl_cook_2015 import DT_MS, T_PRESENT_MS, T_REST_MS, INPUT_INTENSITY, SEED, fresh_network, mnist_input     ##D&C's constants; fresh_network works unchanged (Dend is transient state)
@@ -161,9 +160,20 @@ def som_inhibition_weights(pos_exc: np.ndarray, pos_inh: np.ndarray, pre_inh: np
 ##########################   Assemble   ###################################################
    ######################################################################################
 
+class ZhangProtocol(DCProtocol):
+    """DCProtocol + the paper's proportion-weighted readout (BindsNET's) on the same assign / test responses, inside the report (results.json and
+    results.jsonl). Same protocol_type and DCProtocolCfg: run_id unchanged."""
+
+    def extra_readouts(self, res, y_assign, y_test):
+        accs = [accuracy(y_test, proportion_weighting(self.Resp_assign, y_assign, resp_te)[2]) for resp_te in self.Resp_test]
+        res = {**res, "proportion_weighting_accuracy_per_pass": accs, "proportion_weighting_accuracy_mean": float(np.mean(accs)),
+               "paper_reference_zhang": "Table 2 (MNIST ablation, neuron count not stated; 96.7 = the 6400-exc headline of §4.3): baseline 95.0, + dendrites 95.4, + SOM inhibition 96.7, + shared 96.7 (BindsNET, 100 ms encoding)"}
+        return res, (f"  proportion-weighted : {res['proportion_weighting_accuracy_mean']:.2f}%   paper: {res['paper_reference_zhang']}",)
+
+
 ##the runtime classes as ONE pack (phasicnet.RuntimeClasses): all switches on; build() replaces synapse_cls / threshold_cls for the ablations
 ZHANG_CLASSES = RuntimeClasses(synapse_cls=ZhangDendriticSynapse, integrator_cls=DCLIFeuler, threshold_cls=ZhangOneSpikeThreshold, plasticity_cls=DCTripletSTDP,
-                               noise_cls=TestNoise, phase_classes=(DefaultPhase,), protocol_classes=(DCProtocol,))
+                               noise_cls=TestNoise, phase_classes=(DefaultPhase,), protocol_classes=(ZhangProtocol,))
 
 
 def build(n_input: int, n_exc: int, *, dendrites: bool = True, som_inhibition: bool = True, psc: bool = True, one_spike: bool = True,
@@ -272,7 +282,7 @@ def main(*, npz=RAW_DIR / "mnist.npz", n_exc: int = 100, grid=None, no_dendrites
         one-spike rule does to the other crossers); triplet: D&C's triplet rule instead of the paper's pair rule; present_ms / rest_ms: the protocol's
         window (the paper's 100 ms + D&C's 150 ms rest; D&C: 350 + 150); every: snapshot every N examples; resume: a snapshot .npz; out: the run folder
         (default runs/zhang_2025_<tag or network name>); n_test: None = the whole official test set, a smaller number is a stratified pick (DataCfg.n_test).
-    Returns the Run; results.json also carries the paper's proportion-weighted accuracy, computed from the saved responses."""
+    Returns the Run; results.json also carries the paper's proportion-weighted accuracy (ZhangProtocol)."""
     kw = dict(present_ms=present_ms, rest_ms=rest_ms)
     data, test = mnist_dataset(npz=npz, seed=seed, **kw)      ##dc_reproduce's (train, test) ModelInputs
     n_input = data.n_input
@@ -284,21 +294,7 @@ def main(*, npz=RAW_DIR / "mnist.npz", n_exc: int = 100, grid=None, no_dendrites
     out.mkdir(parents=True, exist_ok=True)
     rc = runcfg(every=every, present_ms=present_ms, rest_ms=rest_ms, n_train=n_train, n_assign=n_assign, n_test=n_test, test_passes=test_passes,
                 max_repeats=max_repeats, report_every=report_every)
-    run = pnet.train(data, rc, test_data=test, out_dir=out, resume_from=resume, save_run=False, save_history=False, dataset_name="mnist")
-    ##the paper's proportion-weighted readout, from the responses the protocol saved
-    r = _read_responses_npz(out / "responses.npz")
-    accs = []
-    for resp_te in r["resp_test"]:
-        _, _, pred = proportion_weighting(r["resp_assign"], r["y_assign"], resp_te)
-        accs.append(float((pred == r["y_test"]).mean() * 100))
-    res_path = out / "results.json"
-    res = _read_json_yaml(res_path) if res_path.exists() else {}
-    res["proportion_weighting_accuracy_per_pass"] = accs
-    res["proportion_weighting_accuracy_mean"] = float(np.mean(accs))
-    res["paper_reference_zhang"] = "Table 2 (MNIST ablation, neuron count not stated; 96.7 = the 6400-exc headline of §4.3): baseline 95.0, + dendrites 95.4, + SOM inhibition 96.7, + shared 96.7 (BindsNET, 100 ms encoding)"
-    _write_json_yaml(res_path, res, JSON=True, YAML=False, log_label="Results")
-    logger.info("proportion-weighted accuracy: %s  (D&C rank vote: %s)", accs, res.get("accuracy_per_pass"))
-    return run
+    return pnet.train(data, rc, test_data=test, out_dir=out, resume_from=resume, save_run=False, save_history=False, dataset_name="mnist")
 
 
 if __name__ == "__main__":

@@ -40,6 +40,7 @@ from original_dynamics import TestNoise
 from phases import DefaultPhase
 from paths import NETWORKS_DIR, RUNS_DIR
 from readouts import LogisticReadout, fit_evaluate, readout_report
+from scorer import accuracy
 from deckers_2022 import shd_frames                 ##SHD via tonic at dt, cut / padded to t_max (Deckers build); downsampled to 70 channels below
 
 logger = logging.getLogger("krenzer_2025")
@@ -293,7 +294,7 @@ class RLSMProtocol(Protocol):
             X, y = self.Resp_train, self.Y_train
         ro = fit_evaluate(X, y, self.Resp_test, self.Y_test, l2=c.readout_l2, lr=c.readout_lr, epochs=c.readout_epochs)
         pred = self.Pred_train[self._n_fb:]
-        online = float(100 * np.mean(pred[pred >= 0] == self.Y_train[self._n_fb:][pred >= 0])) if (pred >= 0).any() else None
+        online = accuracy(self.Y_train[self._n_fb:][pred >= 0], pred[pred >= 0]) if (pred >= 0).any() else None
         res, files = readout_report(ro, self.Resp_train, self.Y_train, self.Resp_test, self.Y_test)     ##the shared tail; this protocol's own keys below
         res.update({"feedback": pl.feedback, "online_acc_after_feedback": online, "feedback_from": int(self._n_fb),
                     "feat_spikes_per_sample_train": float(self.Resp_train.sum(1).mean()), "feat_spikes_per_sample_test": float(self.Resp_test.sum(1).mean()),

@@ -46,6 +46,8 @@ for _d in (DATASET_DIR, RAW_DIR, TRAIN_TEST_DIR, RUNS_DIR, NETWORKS_DIR):
 
 MNIST_URL = "https://storage.googleapis.com/tensorflow/tf-keras-datasets/mnist.npz"
 MNIST_PATH = RAW_DIR / "mnist.npz"
+FMNIST_URL = "https://storage.googleapis.com/tensorflow/tf-keras-datasets/"      ##Fashion-MNIST as 4 idx files (Keras' mirror)
+FMNIST_PATH = RAW_DIR / "fmnist.npz"
 
 ##the logging config runlog.setup_logging() reads
 LOG_CFG_PATH = SYSTEM_DIR / "runlog.yml"

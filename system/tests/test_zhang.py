@@ -11,7 +11,7 @@ import numpy as np
 from modelinput import ModelInput
 import pytest
 
-from system.dynamicscfg import DynamicsCfg
+from dynamicscfg import DynamicsCfg
 from builder import CONNECTIVITY_PATTERNS
 from zhang2025 import ZhangSynapseCfg, ZhangDendriticSynapse, ZhangThresholdCfg, ZhangOneSpikeThreshold
 from diehlcook import DCConductanceSynapse, DCAdaptiveThreshold
@@ -341,6 +341,17 @@ def test_proportion_weighting_hand_case():
     resp_assign = np.array([[10, 1, 0], [10, 1, 0], [0, 5, 0], [0, 5, 0]], dtype=float)   ##a third, silent neuron must not enter class 0's divisor
     assign, prop, pred = proportion_weighting(resp_assign, y_assign, np.array([[4, 1, 0], [0, 0, 9]]), n_classes=2)
     assert list(assign) == [0, 1, -1] and list(pred) == [0, -1]
+
+
+def test_zhang_protocol_reports_proportion_weighting_inside_finish():
+    """ZhangProtocol adds the proportion-weighted accuracy per test pass to the protocol's results (no results.json patching after the run)."""
+    from types import SimpleNamespace
+    from zhang_2025 import ZhangProtocol
+    from scorer import accuracy
+    me = SimpleNamespace(Resp_assign=np.array([[10, 1], [10, 1], [0, 5], [0, 5]], dtype=float), Resp_test=np.array([[[0, 6], [4, 1]], [[4, 1], [4, 1]]], dtype=float))
+    res, lines = ZhangProtocol.extra_readouts(me, {"accuracy_mean": 50.0}, np.array([0, 0, 1, 1]), np.array([1, 0]))
+    assert res["accuracy_mean"] == 50.0 and res["proportion_weighting_accuracy_per_pass"] == [100.0, 50.0] and res["proportion_weighting_accuracy_mean"] == 75.0
+    assert len(lines) == 1 and accuracy([1, 0, 2], [1, 0, 0]) == pytest.approx(200 / 3)
 
 
 # ------------------------------------------------------------------ end to end: the D&C protocol runs the Zhang build

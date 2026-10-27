@@ -11,7 +11,8 @@ from functools import singledispatch
 from datetime import datetime  
 import numpy as np
 import logging
-from paths import EXPORT_DIR, MNIST_PATH, MNIST_URL
+from paths import EXPORT_DIR, MNIST_PATH, MNIST_URL, FMNIST_PATH, FMNIST_URL
+import gzip
 from urllib.request import urlretrieve
 import operator
 
@@ -103,6 +104,26 @@ def import_mnist_digits(save_to: str | Path | None = None) -> Path:
     else:
         logger.info("MNIST from: %s", path)
 
+    return path
+
+def import_fmnist(save_to: str | Path | None = None) -> Path:
+    """Download Fashion-MNIST if needed -> fmnist.npz with mnist.npz's keys (x_train, y_train, x_test, y_test). Same use as import_mnist_digits."""
+    path = FMNIST_PATH if save_to is None else Path(save_to) / "fmnist.npz"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        logger.info("Fashion-MNIST from: %s", path)
+        return path
+    logger.info("Downloading Fashion-MNIST to %s", path)
+    arrays = []
+    for name in ("train-labels-idx1-ubyte.gz", "train-images-idx3-ubyte.gz", "t10k-labels-idx1-ubyte.gz", "t10k-images-idx3-ubyte.gz"):
+        gz = path.parent / f"fmnist_{name}"
+        urlretrieve(FMNIST_URL + name, gz)
+        with gzip.open(gz, "rb") as f:
+            raw = f.read()
+        arrays.append(np.frombuffer(raw, np.uint8, offset=8) if "labels" in name else np.frombuffer(raw, np.uint8, offset=16).reshape(-1, 28, 28))
+        gz.unlink()
+    y, x, yt, xt = arrays
+    np.savez_compressed(path, x_train=x, y_train=y, x_test=xt, y_test=yt)
     return path
 
 
@@ -268,6 +289,13 @@ def _write_responses_npz(file: str | Path, arrays: Dict[str, np.ndarray]) -> Non
     np.savez_compressed(file.with_suffix(".npz"), **arrays)
 
     logger.info("Responses arrays saved as: %s", file.with_suffix(".npz"))
+
+
+def _write_degrees_npz(file: str | Path, labels, degrees: Dict[str, np.ndarray]) -> None:
+    """Write in- / out-degree per neuron at every saved weight state (labels = the states, degrees = {in_<group> | out_<group>: (states, neurons)})."""
+    file = Path(file)
+    np.savez(file.with_suffix(".npz"), labels=np.array(labels), **{k: np.array(v) for k, v in degrees.items()})
+    logger.info("Degree arrays saved as: %s", file.with_suffix(".npz"))
 
 
 def _read_responses_npz(file: str | Path) -> Dict[str, np.ndarray]:

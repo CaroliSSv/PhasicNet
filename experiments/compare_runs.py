@@ -14,7 +14,7 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 from paths import RUNS_DIR
-from utils import _read_json_yaml, _write_json_yaml
+from utils import _read_json_yaml, _write_json_yaml, _write_degrees_npz
 import capture
 import hlsp_lsm_2026 as hlsp
 import plots
@@ -74,7 +74,7 @@ def run(mode: str = "hybrid_event", *, seed: int = 1, n_train: int | None = None
     for g in plots._groups(saved):                       ##per neuron group: (weight states, neurons of g)
         labels, deg[f"in_{g}"] = plots.weight_series(saved, plots.recurrent_in_degree, post_group=g)
         _, deg[f"out_{g}"] = plots.weight_series(saved, capture.out_degree, pre_group=g)
-    np.savez(out / "degrees.npz", labels=np.array(labels), **{k: np.array(v) for k, v in deg.items()})
+    _write_degrees_npz(out / "degrees", labels, deg)
     plots.all_plots(saved)
     return r
 

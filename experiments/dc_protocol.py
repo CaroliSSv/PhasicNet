@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, asdict
 import numpy as np
 from runcfg import ProtocolCfg
 from protocols import Protocol
-from scorer import dc_assign_labels, dc_rank_predict, confusion_matrix     ##the authors' exact readout (scorer)
+from scorer import dc_assign_labels, dc_rank_predict, confusion_matrix, accuracy     ##the authors' exact readout (scorer)
 from diehl_cook_2015 import fresh_network, DT_MS, T_PRESENT_MS, T_REST_MS, INPUT_INTENSITY
 from diehlcook import dc_normalise                                                             ##the script's normalize_weights()
 
@@ -159,7 +159,7 @@ class DCProtocol(Protocol):
             done = j + 1
             if done % c.block == 0:                             ##Fig. 2C: block accuracy with the labels of the previous block (the first block: all 0)
                 cur = slice(done - c.block, done)
-                acc = float((self.Pred_train[cur] == y_train[cur]).mean() * 100)
+                acc = accuracy(y_train[cur], self.Pred_train[cur])
                 self._block_acc.append({"examples": done, "train_acc": acc})
                 log(f"  [Fig2C] training accuracy, examples {cur.start + 1}-{done}: {acc:.2f}%" + ("  (labels: all 0, as the script starts)" if done == c.block else ""))
 
@@ -196,7 +196,7 @@ class DCProtocol(Protocol):
         accs, cms = [], []
         for p, resp_te in enumerate(self.Resp_test):
             yhat = dc_rank_predict(resp_te, assign)
-            accs.append(float((yhat == y_test).mean() * 100)); cms.append(confusion_matrix(y_test, yhat))
+            accs.append(accuracy(y_test, yhat)); cms.append(confusion_matrix(y_test, yhat))
             log(f"  test pass {p + 1}: accuracy {accs[-1]:.2f}%  re-presented {(self.Reps_test[p] > 1).mean() * 100:.1f}%")
         run.check_persistent_unchanged()
 
@@ -212,7 +212,12 @@ class DCProtocol(Protocol):
         files = dict(assign=assign, resp_assign=self.Resp_assign, y_assign=y_assign, resp_test=self.Resp_test, y_test=y_test, confusion=np.stack(cms),
                      resp_train=self.Resp_train, y_train=y_train, reps_train=self.Reps_train, pred_train=self.Pred_train, reps_assign=self.Reps_assign,
                      reps_test=self.Reps_test)
+        res, extra = self.extra_readouts(res, y_assign, y_test)
         return ops.finish(res, files=files, lines=(
             f"  accuracy        : {res['accuracy_mean']:.2f}% (+- {res['accuracy_std']:.2f}, {c.test_passes} test pass(es) x {n_te}, labels from {c.n_assign})   paper: {res['paper_reference']}",
             f"  neurons/class   : {res['neurons_per_class']}   unassigned: {res['unassigned_neurons']}",
-            f"  train           : {c.n_train - j0} examples   re-presented {res['train']['re_presented_frac']}   capped {capped_tr}"))
+            f"  train           : {c.n_train - j0} examples   re-presented {res['train']['re_presented_frac']}   capped {capped_tr}") + extra)
+
+    def extra_readouts(self, res: dict, y_assign, y_test) -> tuple[dict, tuple]:
+        """A subclass adds its own readout of the SAME responses (Resp_assign / Resp_test) before finish: -> (res with its keys, its report lines)."""
+        return res, ()

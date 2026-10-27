@@ -67,12 +67,31 @@ def calinski_harabasz(responses: np.ndarray, labels: np.ndarray) -> float:
 
 
    ##########################################################
+        ###########  Accuracy (any readout) ##########
+
+##  accuracy / confusion_matrix score the PREDICTIONS of any readout (logistic regression, the neuron-label votes below, ...)
+
+def accuracy(labels: np.ndarray, predicted: np.ndarray) -> float:
+    """Percent of predictions equal to the labels (the one accuracy every protocol and readout reports)."""
+    return float((np.asarray(predicted) == np.asarray(labels)).mean() * 100.0)
+
+
+def confusion_matrix(labels: np.ndarray, predicted: np.ndarray, n_classes: int = 10) -> np.ndarray:
+    """(n_classes, n_classes) counts; row = true class, column = predicted class."""
+    cm = np.zeros((n_classes, n_classes), dtype=np.int64)
+    np.add.at(cm, (np.asarray(labels), np.asarray(predicted)), 1)
+    return cm
+
+
+   ##########################################################
         ###########  Label-assignment vote ##########
 
 ##      Accuracy - DiehlCook2015
 ##  assign_neuron_labels: label assigned by highest mean-spike-count response to said label by node/neuron
 ##    vote_predict: example's label assigned by labeled neurons: class with most exuberant (ascribed) neurons
 ##   vote_accuracy: % correct predictions
+##  NOTE the neuron-label family (a class per neuron, then a vote) is D&C's own, unusual method, not best practice (the authors say so).
+##       Each readout below returns PREDICTIONS; accuracy() above scores them. Exact D&C copy: dc_*; Zhang / BindsNET: proportion_weighting.
 
 def assign_neuron_labels(responses: np.ndarray, labels: np.ndarray, n_classes: int = 10) -> np.ndarray:
     """(n_examples, n_neurons) counts -> (n_neurons,) class per neuron = argmax over classes of its MEAN response. A neuron that never fired
@@ -106,7 +125,7 @@ def vote_accuracy(assign_responses: np.ndarray, assign_labels: np.ndarray, test_
                   n_classes: int = 10) -> float:
     """Percent correct on the test responses, with neuron labels taken from the assignment responses."""
     assign = assign_neuron_labels(assign_responses, assign_labels, n_classes)
-    return float((vote_predict(test_responses, assign, n_classes) == np.asarray(test_labels)).mean() * 100.0)
+    return accuracy(test_labels, vote_predict(test_responses, assign, n_classes))
 
 
 def dc_assign_labels(responses: np.ndarray, labels: np.ndarray, n_classes: int = 10, unassigned: int = -1) -> np.ndarray:
@@ -170,13 +189,6 @@ def proportion_weighting(resp_assign: np.ndarray, y_assign: np.ndarray, resp_tes
     pred = np.argmax(scores, axis=1)
     pred[scores.sum(axis=1) == 0] = -1                                                  ##silent sample -> abstain
     return assign, proportions, pred
-
-
-def confusion_matrix(labels: np.ndarray, predicted: np.ndarray, n_classes: int = 10) -> np.ndarray:
-    """(n_classes, n_classes) counts; row = true class, column = predicted class."""
-    cm = np.zeros((n_classes, n_classes), dtype=np.int64)
-    np.add.at(cm, (np.asarray(labels), np.asarray(predicted)), 1)
-    return cm
 
 
    ######################################################################################
