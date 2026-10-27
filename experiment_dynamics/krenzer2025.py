@@ -51,7 +51,6 @@ class RSTDPCfg(PlasticityCfg):
     k: Optional[float] = 1.0
     gamma: float = 1e-6
     scale_after_feedback: bool = False
-    cfg_type: str = field(default="RSTDPCfg", kw_only=True)
 
 
 def scale_rows_to(W_block: np.ndarray, alpha: float) -> None:

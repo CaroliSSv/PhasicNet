@@ -7,14 +7,14 @@ from numpy.random import SeedSequence, Generator, PCG64
 from hashlib import blake2b
 import logging
 from utils import _capitalize_strip_name     
-from system.dynamicscfg import _load_section_cfg      
+from dynamicscfg import _load_section_cfg, _NamesItself      
 
 logger = logging.getLogger(__name__)
 
 
 
 @dataclass(frozen=True, slots=True)
-class DataCfg:
+class DataCfg(_NamesItself):
     """
     Which samples a run sees: the one-time test/train split (owned by DataHandler) and the per-run pick from each set.
     Train/val splitting is NOT here: see ProtocolCfg.val_split.
@@ -35,11 +35,11 @@ class DataCfg:
     n_train: Optional[int] = None            # N-MNIST one-class crash
     n_test: Optional[int] = None             # N-MNIST one-class crash
     shuffle: bool = False                    # N-MNIST one-class crash
-    cfg_type: str = field(default="DataCfg", kw_only=True)   # cfg types: names the class to rebuilds a SUBCLASS
+    cfg_type: str = field(default="", kw_only=True)   # cfg types: names the class to rebuilds a SUBCLASS
 
 
 @dataclass(frozen=True, slots=True)
-class HistoryCfg:
+class HistoryCfg(_NamesItself):
     """
     WHAT a RunHistory retains. Stored WITH the history as its own description.
 
@@ -57,13 +57,13 @@ class HistoryCfg:
     record_datarun: bool = True
     record_counts: bool = True      ##running spike COUNT per neuron
 
-    cfg_type: str = field(default="HistoryCfg", kw_only=True)   # cfg types: names the class
+    cfg_type: str = field(default="", kw_only=True)   # cfg types: names the class
     chunk_events: int = 60000   ##Number of events before buffer flushes.60000 uint32 events = 234 KB per flush (NOTE very small**) 
 
 
 
 @dataclass(frozen=True, slots=True)
-class ScorerCfg:
+class ScorerCfg(_NamesItself):
     """
     Thresholds for the health probes, and which score drives model selection.
 
@@ -76,11 +76,11 @@ class ScorerCfg:
     rate_hz_max: float = 500.0
     rate_hz_min: float = 0.01
     scorer: str = "vrc"
-    cfg_type: str = field(default="ScorerCfg", kw_only=True)   # cfg types: names the class, so RunCfg.load rebuilds a subcls
+    cfg_type: str = field(default="", kw_only=True)   # cfg types: names the class, so RunCfg.load rebuilds a subcls
 
 
 @dataclass(frozen=True, slots=True)
-class CheckpointCfg:
+class CheckpointCfg(_NamesItself):
     """
     POLICY for checkpointing. Frozen and archived with the run: it changes which weights are reported.
 
@@ -107,7 +107,7 @@ class CheckpointCfg:
     to_disk: bool = True         ##IO only; excluded from run_id ( RunCfg.HASH_EXCLUDE)
     every: Optional[int] = None  # IO only, excluded from run_id
     keep_last: Optional[int] = 3   ##IO only, excluded from run_id
-    cfg_type: str = field(default="CheckpointCfg", kw_only=True)  
+    cfg_type: str = field(default="", kw_only=True)  
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,4 +213,4 @@ class RunCfg:
         return cls(**kwargs)
     
     def _canonicalize(self):
-        return asdict(self)
+        return asdict(self)

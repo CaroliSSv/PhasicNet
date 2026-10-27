@@ -51,7 +51,6 @@ class NALSMSynapseCfg(SynapseCfg):
     max_since: float = 100.0
     since_init: Optional[float] = None
     cutoff: Optional[float] = None
-    cfg_type: str = field(default="NALSMSynapseCfg", kw_only=True)
 
 
 def _t_lim(tau_steps: float) -> float:
@@ -139,7 +138,6 @@ class NALSMIntegratorCfg(IntegratorCfg):
     Args: t_refrac = ms (2): used by the THRESHOLD only -- the code integrates v while refractory (update_neuron_states_wo_R)."""
     b: float = 0.0
     t_refrac: float = 2.0
-    cfg_type: str = field(default="NALSMIntegratorCfg", kw_only=True)
 
 
 class NALSMLIF(Integrator):
@@ -172,7 +170,6 @@ class NALSMLIF(Integrator):
 @dataclass(frozen=True, slots=True)
 class NALSMThresholdCfg(ThresholdCfg):
     """ThresholdCfg: v_reset 0, v_th 20, t_refrac 2 ms. tau_th / adpt_th unused (fixed threshold)."""
-    cfg_type: str = field(default="NALSMThresholdCfg", kw_only=True)
 
 
 class NALSMThreshold(Threshold):
@@ -234,7 +231,6 @@ class NALSMPlasticityCfg(PlasticityCfg):
     decay: float = 0.99
     astro: bool = True
     input_bounds: Optional[Tuple[float, float]] = (-3.0, 3.0)
-    cfg_type: str = field(default="NALSMPlasticityCfg", kw_only=True)
 
 
 class NALSMAstroSTDP(Plasticity):

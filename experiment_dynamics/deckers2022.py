@@ -60,7 +60,6 @@ class ELSMSynapseCfg(SynapseCfg):
     e_exc: Optional[float] = None
     e_inh: Optional[float] = None
     delays: Optional[Dict[str, float]] = None
-    cfg_type: str = field(default="ELSMSynapseCfg", kw_only=True)
 
 
 class ELSMConductanceSynapse(Synapse):
@@ -210,7 +209,6 @@ class ELSMIntegratorCfg(IntegratorCfg):
     t_refrac: float = 3.0
     t_refrac_inh: float = 2.0
     v_init: Optional[Tuple[float, float]] = (13.5, 15.0)
-    cfg_type: str = field(default="ELSMIntegratorCfg", kw_only=True)
 
 
 class ELSMConductanceLIF(Integrator):
@@ -306,7 +304,6 @@ class ELSMThresholdCfg(ThresholdCfg):
     sfa_range: Optional[Tuple[float, float]] = None
     sfa_exc_only: bool = True
     t_refrac_inh: float = 2.0
-    cfg_type: str = field(default="ELSMThresholdCfg", kw_only=True)
 
 
 class SFAThreshold(Threshold):
@@ -392,7 +389,6 @@ class NoPlasticityCfg(PlasticityCfg):
     A_ltd: float = 0.0
     eta_exc: float = 0.0
     freeze: Tuple[str, ...] = ("all",)
-    cfg_type: str = field(default="NoPlasticityCfg", kw_only=True)
 
 
 class NoPlasticity(Plasticity):

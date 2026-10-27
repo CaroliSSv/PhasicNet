@@ -51,7 +51,6 @@ class HLSPSynapseCfg(SynapseCfg):
     std_u: float = 0.4
     std_tau: float = 150.0
     std_pre_depletion: bool = False
-    cfg_type: str = field(default="HLSPSynapseCfg", kw_only=True)
 
 
 class HLSPCurrentSynapse(Synapse):
@@ -148,7 +147,6 @@ class HLSPIntegratorCfg(IntegratorCfg):
     """IntegratorCfg (tau_mem 64 ms, v_rest 0, r 1.0: (1 - beta) R is absorbed into W) + the refractory clamp.
     Args: t_refrac = ms (Table 2: 2 ms): V held at 0 (no integration) while Since < steps(t_refrac)."""
     t_refrac: float = 2.0
-    cfg_type: str = field(default="HLSPIntegratorCfg", kw_only=True)
 
 
 class HLSPLIF(Integrator):
@@ -186,7 +184,6 @@ class HLSPLIF(Integrator):
 @dataclass(frozen=True, slots=True)
 class HLSPThresholdCfg(ThresholdCfg):
     """ThresholdCfg: v_reset 0, v_th 20 mV, t_refrac 2 ms (Table 2). tau_th / adpt_th unused (fixed threshold)."""
-    cfg_type: str = field(default="HLSPThresholdCfg", kw_only=True)
 
 
 class HLSPThreshold(Threshold):
@@ -243,7 +240,6 @@ class HLSPPlasticityCfg(PlasticityCfg):
     trace_inc: float = 0.1
     estdp: bool = True
     istdp: bool = True
-    cfg_type: str = field(default="HLSPPlasticityCfg", kw_only=True)
 
 
 class HLSPPlasticity(Plasticity):

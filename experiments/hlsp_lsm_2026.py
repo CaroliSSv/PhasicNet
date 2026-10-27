@@ -63,7 +63,7 @@ W_IN = {"mnist": 0.5, "nmnist": 4.0, "fmnist": 1.0}      #Sec. 4.3.2: the optima
 STD_U, STD_TAU = 0.4, 150.0
 A_E, TAU_E, A_I, TAU_I1, TAU_I2, TRACE_INC = 0.15, 10.0, 0.15, 5.0, 10.0, 0.1
 T_TRAIN_MS, T_STATE_MS = 50.0, 250.0     #Sec. 4.1: 50 ms per sample in the self-organising phase, 250 ms for the state vector
-PARTITIONS = {"mnist": 1, "nmnist": 4, "fmnist": 1}      #Sec. 4.3.3: P = 1 best for MNIST / F-MNIST, P = 4 for N-MNIST
+PARTITIONS = {"mnist": 1, "nmnist": 4, "fmnist": 1}     #TODO Rename partitions? #Sec. 4.3.3: P = 1 best for MNIST / F-MNIST, P = 4 for N-MNIST
 PEAK_HZ = 1000.0                #Hz   the rate of a pixel at FULL intensity. Not in the paper; the authors' code (LSM_BaseClass.py) uses the normalised
                                 #     pixel AS the spike probability per 1 ms step, i.e. 1000 Hz at intensity 1. With the authors' image scaling (load_dataset)
                                 #     the fresh liquid fires ~7 Hz at W_in 0.5 (Fig. 2: ~7). peak_hz / w_in in main() to calibrate.

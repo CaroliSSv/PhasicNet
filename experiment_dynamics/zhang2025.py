@@ -59,7 +59,6 @@ class ZhangSynapseCfg(DCSynapseCfg):
     dendrite_rule: str = "gate"
     soma_input: str = "conductance"
     soma_gain: float = 1.0
-    cfg_type: str = field(default="ZhangSynapseCfg", kw_only=True)
 
 
 class ZhangDendriticSynapse(DCConductanceSynapse):
@@ -188,7 +187,6 @@ class ZhangThresholdCfg(DCThresholdCfg):
     one_spike: bool = True
     one_spike_select: str = "random"
     one_spike_losers: str = "reset"
-    cfg_type: str = field(default="ZhangThresholdCfg", kw_only=True)
 
 
 class ZhangOneSpikeThreshold(DCAdaptiveThreshold):

@@ -53,18 +53,27 @@ class SimulationCfg:
 
 
 
+class _NamesItself:
+    """Base of every cfg_type cfg: cfg_type left empty = the class's own name, so a subclass needs no cfg_type line.
+    _load_section_cfg finds the subclass by that name. A subclass with its own __post_init__ must call _NamesItself.__post_init__(self)."""
+    __slots__ = ()
+    def __post_init__(self):
+        if not self.cfg_type:
+            object.__setattr__(self, "cfg_type", type(self).__name__)   ##object.__setattr__ BYPASSES frozen
+
+
 @dataclass(frozen=True, slots=True)
-class SynapseCfg:
+class SynapseCfg(_NamesItself):
     """
     Args:
         b = synaptic plate bias (placeholder)
     """ 
     b: Optional[float] = None       
-    cfg_type: str = field(default="SynapseCfg", kw_only=True)   ##Default names itself. Overridden by subclasses
+    cfg_type: str = field(default="", kw_only=True)   ##"" = the class name (_NamesItself)
 
 
 @dataclass(frozen=True, slots=True)
-class IntegratorCfg:
+class IntegratorCfg(_NamesItself):
     """
     Args:
         tau_mem = ms, Time-constant of decay of membrane potential
@@ -74,11 +83,11 @@ class IntegratorCfg:
     tau_mem: float
     v_rest: float
     r: float   #  NOTE CURRENT convention: Capital letters = matrix (ex. V_th as opposed to v_th). 
-    cfg_type: str = field(default="IntegratorCfg", kw_only=True)   ##Default names itself. Overridden by subclasses
+    cfg_type: str = field(default="", kw_only=True)   ##"" = the class name (_NamesItself)
 
 
 @dataclass(frozen=True, slots=True)
-class ThresholdCfg:
+class ThresholdCfg(_NamesItself):
     """
     Args:
         v_reset = mV, Voltage reset on spike
@@ -93,12 +102,12 @@ class ThresholdCfg:
     tau_th: Optional[float] = None
     adpt_th: Optional[float] = None
     t_refrac: Optional[float] = None ## absolute refractory period in ms. None = no refractory period applied
-    cfg_type: str = field(default="ThresholdCfg", kw_only=True)   ##Default names itself. Overridden by subclasses
+    cfg_type: str = field(default="", kw_only=True)   ##"" = the class name (_NamesItself)
 
 
 
 @dataclass(frozen=True, slots=True)
-class PlasticityCfg:
+class PlasticityCfg(_NamesItself):
     """
     Args:
         tau_pretrace = ms, Time-constant of pretrace decay
@@ -120,11 +129,11 @@ class PlasticityCfg:
     w_min: Optional[float] = None 
     w_max: Optional[float] = None
     freeze: Tuple[str, ...] = ()  ##ex. "input", "inh", "exc", "all", or "<synapse-name>"
-    cfg_type: str = field(default="PlasticityCfg", kw_only=True)   ##Default names itself. Overridden by subclasses
+    cfg_type: str = field(default="", kw_only=True)   ##"" = the class name (_NamesItself)
 
 
 @dataclass(frozen=True, slots=True)
-class NoiseCfg:
+class NoiseCfg(_NamesItself):
     """
     Args:
         mu_mem = Mean membrane noise
@@ -133,7 +142,7 @@ class NoiseCfg:
     """
     mu_mem: float
     sigma_mem: float
-    cfg_type: str = field(default="NoiseCfg", kw_only=True)   ##Default names itself. Overridden by subclasses
+    cfg_type: str = field(default="", kw_only=True)   ##"" = the class name (_NamesItself)
 
 
 
@@ -193,13 +202,13 @@ def _load_section_cfg(base: type, raw: dict, key: str = "cfg_type"):
 
     for cfg_cls in _cfg_subclasses(base):
         ##NOTE: read the field DEFAULT, since fields() works on finding attributes regardless while getattr() relies on slots=false**        
-        default = next((f.default for f in fields(cfg_cls) if f.name == key), "")
+        default = cfg_cls.__name__ if key == "cfg_type" else next((f.default for f in fields(cfg_cls) if f.name == key), "")   ##cfg_type = the class name
         if _capitalize_strip_name(default) == name:
             return cfg_cls(**raw)
 
     raise RuntimeError(f"No {base.__name__} subclass found for {key} {name!r}. "
                        f"Available {key} names: "
-                       f"{tuple(_capitalize_strip_name(next((f.default for f in fields(c) if f.name == key), '')) for c in _cfg_subclasses(base))}. "
+                       f"{tuple(_capitalize_strip_name(c.__name__ if key == 'cfg_type' else next((f.default for f in fields(c) if f.name == key), '')) for c in _cfg_subclasses(base))}. "
                        f"Import the module that defines it before loading.")
 
 def _load_phase_cfg(raw: dict) ->PhaseCfg:
