@@ -44,6 +44,7 @@ from paths import RAW_DIR, NETWORKS_DIR, RUNS_DIR
 from modelinput import ModelInput
 from preprocessing import load_mnist, poisson_prep
 from readouts import fit_evaluate, readout_report
+from checkpoint import snapshots
 import capture
 
 logger = logging.getLogger("hlsp_lsm_2026")
@@ -326,14 +327,17 @@ def main(*, dataset: str = "mnist", n_liquid: int = N_LIQUID, w_in: float | None
         dataset: "mnist" | "nmnist" | "fmnist"; w_in / partitions None: the paper's optimum for the dataset (W_IN / PARTITIONS); peak_hz: the Poisson rate
         at full intensity; no_std / no_istdp / no_estdp: the ablations (no_istdp = the authors' E-STDP-only model: E-STDP on the inhibitory synapses too);
         std_pre_depletion: the Tsodyks-Markram reading of the STD release; dense: dense weights (default sparse); every: snapshot every N samples;
-        resume: a snap_*.npz; out: the run folder (default runs/hlsp_lsm_2026_<dataset>_n<N>[_tag]).
+        resume: a snap_*.npz, or "auto" = the last one in out
     Returns the Run: run.report = HLSPProtocol's results (also <out>/results.json; log in <out>/run.jsonl, numbers in <out>/results.jsonl, status in <out>/status.json)."""
     train, test, n_input = load_dataset(dataset, peak_hz=peak_hz, seed=seed)
     w_in = W_IN[dataset] if w_in is None else w_in
     P = PARTITIONS[dataset] if partitions is None else partitions
     pnet = build(n_liquid=n_liquid, n_input=n_input, w_in=w_in, seed=seed, weights_format="dense" if dense else "sparse", std=not no_std,
                  estdp=not no_estdp, istdp=not no_istdp, std_pre_depletion=std_pre_depletion)
-    out = Path(out) if out else RUNS_DIR / f"hlsp_lsm_2026_{dataset}_n{n_liquid}{('_' + tag) if tag else ''}"
+    out = Path(out) if out else RUNS_DIR / f"hlsp_lsm_2026_{dataset}_n{n_liquid}{('_' + tag) if tag else ''}" 
+    if resume == "auto":
+        found = snapshots(out)
+        resume = str(found[-1]) if found else None
     return pnet.train(train, runcfg(every=every, partitions=P, train_window="subsample" if dataset == "nmnist" else "start", n_train=n_train, n_test=n_test),
                       test_data=test, out_dir=out, resume_from=resume, save_run=False, save_history=False, dataset_name=dataset)
 

@@ -420,7 +420,7 @@ def test_readout_report_is_the_shared_tail_of_the_readout_protocols(tmp_path):
 
 def test_new_files_use_no_where_keyword():
     """No `where=` keyword in the Deckers files or the builder's kernel code."""
-    for f in ("experiment_dynamics/deckers2022.py", "experiments/deckers_2022.py", "experiments/readouts.py"):
+    for f in ("experiment_dynamics/deckers2022.py", "experiments/deckers_2022.py", "system_modules/readouts.py"):
         src = (_ROOT / f).read_text()
         assert not re.search(r"\bwhere\s*=", src), f
     builder_src = (_ROOT / "system" / "builder.py").read_text()
