@@ -14,7 +14,7 @@ from modelinput import ModelInput   ##train() / _prep_run require a ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from system.dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
 from runcfg import RunCfg, DataCfg, CheckpointCfg, HistoryCfg, ScorerCfg, ProtocolCfg
 from original_dynamics import DeltaCurrentDense, DeltaCurrentSparse, LIFexact, AdaptiveThreshold, TraceSTDP, SparseTraceSTDP
 from original_dynamics import TestNoise
@@ -152,7 +152,7 @@ def test_runcfg_load_reads_files_saved_before_the_run_settings_moved():
 
 def test_phase_type_and_protocol_type_are_the_keys_and_old_files_still_load():
     """phase_type / protocol_type are the saved keys the loaders pick subclasses by; old files (phase_name / protocol_name) still load (COMPAT)."""
-    from system.dynamicscfg import SleepPhaseCfg, _load_phase_cfg
+    from dynamicscfg import SleepPhaseCfg, _load_phase_cfg
     from dc_protocol import DCProtocolCfg
     raw = dataclasses.asdict(_pnet(True).cfg)
     assert [k for k in raw["phases"][0] if k.endswith("_name") or k.endswith("_type")] == ["phase_type"]

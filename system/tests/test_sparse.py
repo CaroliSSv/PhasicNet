@@ -9,7 +9,7 @@ from modelinput import ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from system.dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
+from dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
                  PlasticityCfg, NoiseCfg, PhaseCfg)
 from runcfg import RunCfg, DataCfg, ScorerCfg, ProtocolCfg
 from protocols import HoldoutValidation

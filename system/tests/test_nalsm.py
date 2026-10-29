@@ -13,7 +13,7 @@ from modelinput import ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from system.dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
 from original_dynamics import TestNoise
 from phases import DefaultPhase
 from nalsm2021 import (NALSMSynapseCfg, NALSMIntegratorCfg, NALSMThresholdCfg, NALSMPlasticityCfg, NALSMExpSynapse, NALSMExpSynapseSparse, NALSMLIF,

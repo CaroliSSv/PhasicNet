@@ -14,7 +14,7 @@ from modelinput import ModelInput   ##train() / _prep_run require a ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from system.dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
+from dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
                  PlasticityCfg, NoiseCfg, PhaseCfg)
 from runcfg import RunCfg, DataCfg
 from protocols import HoldoutValidation

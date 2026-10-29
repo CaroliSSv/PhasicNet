@@ -13,7 +13,7 @@ import pytest  ##only needed when run under pytest
 from phasicnet import PhasicNet
 from rnghandler import RNGHandler
 from builder import Network
-from system.dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
+from dynamicscfg import (DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg,
                  PlasticityCfg, NoiseCfg, PhaseCfg)
 from runcfg import RunCfg, DataCfg
 from protocols import HoldoutValidation

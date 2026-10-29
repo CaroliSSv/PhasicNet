@@ -10,7 +10,7 @@ import pytest
 
 from phasicnet import PhasicNet
 from builder import CONNECTIVITY_PATTERNS
-from system.dynamicscfg import SimulationCfg
+from dynamicscfg import SimulationCfg
 from diehl_cook_2015 import build, runcfg, dc_append_rest, DT_MS
 from runcfg import RunCfg, DataCfg, CheckpointCfg, ScorerCfg, HistoryCfg, ProtocolCfg
 

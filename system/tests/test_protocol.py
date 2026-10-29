@@ -139,7 +139,7 @@ class _Prune(S.DefaultPhase):
 
 def test_phase_types_are_normalised_on_both_sides_and_the_strict_check_stays():
     """Phase.__init__ normalises the type on both sides (class and cfg), the scheduler keys by it, and a cfg of another type is still refused."""
-    from system.dynamicscfg import PhaseCfg
+    from dynamicscfg import PhaseCfg
     from dynamics import Phase
     assert isinstance(_Prune(PhaseCfg(phase_type="Prune")), Phase)                  ##both sides normalised -> PRUNE == PRUNE
     with pytest.raises(ValueError, match="expected  prune , got DEFAULT"):
@@ -161,7 +161,7 @@ def test_phase_types_are_normalised_on_both_sides_and_the_strict_check_stays():
 # --------------------------------------------------------------------- 2c. phases + triggers + the run loop
 import logging
 import capture
-from system.dynamicscfg import PhaseCfg, SleepPhaseCfg
+from dynamicscfg import PhaseCfg, SleepPhaseCfg
 from phases import SleepPhase
 
 

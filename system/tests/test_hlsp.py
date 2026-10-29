@@ -13,7 +13,7 @@ from modelinput import ModelInput
 import pytest
 
 from phasicnet import PhasicNet
-from system.dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
+from dynamicscfg import DynamicsCfg, SimulationCfg, NoiseCfg, PhaseCfg
 from original_dynamics import TestNoise
 from phases import DefaultPhase
 from hlsp2026 import (HLSPSynapseCfg, HLSPIntegratorCfg, HLSPThresholdCfg, HLSPPlasticityCfg, HLSPCurrentSynapse, HLSPCurrentSynapseSparse,
