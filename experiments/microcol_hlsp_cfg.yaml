@@ -1,0 +1,135 @@
+#microcol_hlsp_cfg - EXPERIMENT FILE of variant A: ExperimentCfg = dynamics (DynamicsCfg) + run (RunCfg) in one file (PhasicNet.load_experiment;
+# written by PhasicNet.save_experiment, a re-save drops these comments). cfg_id = RunMeta.cfg_id of the dynamics (the reproduction key).
+#dynamics   HLSP-LSM (Luo et al. 2026, Tables 2-3, hlsp2026.py) unchanged in every layer: current synapse + STD, LIF 64 ms / 20 mV / 2 ms,
+#           E-STDP (A 0.15, tau 10 ms) and I-STDP (A 0.15, tau 5 / 10 ms), weights within [-3, 3]; freeze = the groups that never learn
+#run        data: the two sets come from the main file (no split here); protocol LAYERWISE (microcol_hlsp_protocol.py): stage_learn[s] learns for
+#           stage_epochs[s] passes, 50 ms per sample (HLSP Algorithm 1), responses 250 ms; val_split 1/6 (HLSP Sec. 4.1)
+#Any field can be changed per run without editing this file: main(values={"dynamics.plasticity.A_ltp": 0.1, "run.protocol.stage_epochs": [1, 1, 2]}).
+#YAML NOTE: write 0.001 or 1.0e-3, not 1e-3 (PyYAML reads 1e-3 as a string).
+cfg_name: microcol_hlsp
+cfg_id: cbec31f1aab72e4d
+dynamics:
+    simulation:
+        dt: 1.0
+        array_library: numpy
+        weights_format: sparse
+        update_on: hybrid_event
+    synapse:
+        b: null
+        cfg_type: HLSPSynapseCfg
+        tau_syn: 1.0
+        std: true
+        std_u: 0.4
+        std_tau: 150.0
+        std_pre_depletion: false
+    integrator:
+        tau_mem: 64.0
+        v_rest: 0.0
+        r: 1.0
+        cfg_type: HLSPIntegratorCfg
+        t_refrac: 2.0
+    threshold:
+        v_reset: 0.0
+        v_th: 20.0
+        tau_th: null
+        adpt_th: null
+        t_refrac: 2.0
+        cfg_type: HLSPThresholdCfg
+    plasticity:
+        tau_pretrace: 10.0
+        tau_posttrace: 10.0
+        A_ltp: 0.15
+        A_ltd: 0.15
+        eta_exc: 1.0
+        eta_inh: 1.0
+        w_min: -3.0
+        w_max: 3.0
+        freeze:
+        - in_L1e
+        - in_L1i
+        - L3_ei
+        - L3_ie
+        cfg_type: HLSPPlasticityCfg
+        A_I: 0.15
+        tau_I1: 5.0
+        tau_I2: 10.0
+        trace_inc: 0.1
+        estdp: true
+        istdp: true
+    noise:
+        mu_mem: 0.0
+        sigma_mem: 0.0
+        cfg_type: NoiseCfg
+    phases:
+    -   phase_type: DEFAULT
+        triggers: {}
+        trigger_mode: all
+        exit_triggers: null
+        dataloader_active: true
+run:
+    history:
+        record_spikes: false
+        include_input: false
+        record_phase: true
+        record_epoch: true
+        record_datarun: true
+        record_counts: true
+        cfg_type: HistoryCfg
+        chunk_events: 60000
+    scorer:
+        rate_hz_max: 500.0
+        rate_hz_min: 0.0
+        scorer: vrc
+        cfg_type: ScorerCfg
+    checkpoint:
+        select: final
+        content: full
+        greater_is_better: true
+        min_improvement: 0.0
+        to_disk: false
+        every: null
+        keep_last: 3
+        cfg_type: CheckpointCfg
+    data:
+        make_test_split: false
+        test_fraction: 0.0
+        stratify: true
+        n_train: null
+        n_test: null
+        shuffle: true
+        cfg_type: DataCfg
+    protocol:
+        protocol_type: LAYERWISE
+        reset_between_samples: false
+        report_every: 500
+        epochs: 1
+        patience: null
+        val_split: 0.16666666666666666
+        t_train_ms: 50.0
+        t_state_ms: 250.0
+        stage_learn:
+        -   - L1_ee
+            - L1_ei
+            - L1_ie
+            - L1_ii
+        -   - L1_L2e
+            - L1_L2i
+            - L2_ee
+            - L2_ei
+            - L2_ie
+            - L2_ii
+        -   - L2_L3e
+            - L3_ee
+        stage_epochs:
+        - 1
+        - 1
+        - 1
+        cluster_groups:
+        - L1_exc
+        - L2_exc
+        - L3_exc
+        vote_group: null
+        n_init: 10
+        input_control: true
+        rate_probe: 200
+        trajectory_every: 5000    # every neuron's degrees and strengths every 5000 fit samples of every pass (results.json "trajectory", responses.npz traj)

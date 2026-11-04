@@ -626,6 +626,7 @@ def _observables(run, eps=0.0):
                 for signed in (True, False):
                     out[f"strength_{direction}_{post_group}_{pre_group}_{signed}"] = capture.degree_strength(ctx, direction=direction, signed=signed, **kw)
     out["in_exc_sum"] = capture.in_degree(ctx, post_group="exc", summary="sum")
+    out["pinned"] = [capture.pinned_weights(ctx, w_min=0.0, w_max=2.4)[k] for k in ("saturated_frac", "dead_syn_frac", "w_absmax")]     ##realized edges only, both formats
     out["strength_out_exc_mean"] = capture.degree_strength(ctx, direction="out", pre_group="exc", summary="mean")
     return out
 

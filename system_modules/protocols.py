@@ -86,20 +86,25 @@ class Protocol(ABC):
 
     @property
     def state_dict(self) -> dict:
-        """Public ndarray attributes = the protocol's own resumable state (the rule of Dynamics.state_dict). Saved as proto__* in a snapshot."""
+        """Public ndarray attributes = the protocol's own resumable state (the rule of Dynamics.state_dict). Saved as proto__* in a snapshot.
+        ##resolved resume issue: + the ops' bookkeeping (Operations.state_dict, "ops"), so a fit resumes its best / patience and its finished folds."""
+        return {**self._arrays(), **self.ops.state_dict}
+
+    def _arrays(self) -> dict:
         return {k: v for k, v in vars(self).items() if not k.startswith("_") and isinstance(v, np.ndarray)}
 
     def load_state_dict(self, state: dict) -> None:
         """Inverse of state_dict, STRICT: every array of this protocol must be in the snapshot (else it was written by another protocol/version).
         Writes the protocol's OWN arrays (the base rule above) and nothing else: a subclass that adds non-array state to state_dict (DCProtocol's
         json list) reads that itself before calling this."""
-        arrays = Protocol.state_dict.fget(self)
+        arrays = self._arrays()
         missing = [k for k in arrays if k not in state and k not in self._restored_by_subclass]
         if missing:
             raise RuntimeError(f"{type(self).__name__}: the snapshot has no protocol state for {missing}: it cannot be resumed exactly.")
         for k, a in arrays.items():
             if k in state:
                 np.copyto(a, state[k])
+        self.ops.load_state_dict(state)        ##resolved resume issue: the fit bookkeeping ("ops"), when the snapshot has it
 
     def resume(self, path: str | Path) -> dict:
         """Continue from a snapshot written by run.checkpoints.on_sample_end: W, neuronal + module state and this protocol's state are restored,
@@ -128,7 +133,8 @@ class HoldoutValidation(Protocol):
         PhasicNet(seed).train(data, RunCfg(protocol=ProtocolCfg(epochs=3, val_split=0.2)))   with validation
     execute() does NOT run test(): the caller runs run.test() on the held-out TEST set (DataCfg.test_fraction / test_data), CLEARLY separate.
     val_split = the VALIDATION split (inside train); DataCfg.test_fraction / test_data = the TEST split (touched once, by test()).
-    Resumable (CheckpointCfg.every + train(out_dir=), train(resume_from=)); exact under select="final", since best / patience restart at a resume.
+    Resumable (CheckpointCfg.every + train(out_dir=), train(resume_from=)): the position, the fit's best / patience bookkeeping and its epochs
+    (##resolved resume issue); select="best" takes the best epoch's weights back from its TrainedModel file (CheckpointCfg.to_disk).
     """
     protocol_type = "HOLDOUTVAL"
 

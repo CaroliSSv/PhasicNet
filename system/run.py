@@ -11,6 +11,7 @@ from runcfg import RunCfg
 from checkpoint import CheckpointPolicy, save_trained_model, take_snapshot
 from scorer import Scorer
 from states import RunContext, NEVER_SPIKED, _since_update
+from freeze import resolve_frozen
 import capture
 from dynamics import Synapse, Integrator, Threshold, Plasticity, Noise, Phase
 from datahandler import DataHandler
@@ -166,6 +167,14 @@ class Run:
         self._learning = mode == "train"
         if self.history is not None:
             self.history.mode_timeline.mark(sim.current_runstep, MODE_KEY[mode])
+
+    def set_frozen(self, freeze) -> None:
+        """Re-freeze mid-run (layer-wise training): freeze = names / keywords as PlasticityCfg.freeze, every other projection becomes plastic.
+        Resolves syn.frozen, the sparse plastic mask and the clamp plan again; W is not touched. Not in snapshots: call it at every stage entry."""
+        syn = self.ctx.syn
+        resolve_frozen(self.ctx.net, syn, freeze)
+        self._clamp_plan = self._plan_clamp(self.ctx.upd.dW is not None)
+        logger.info("set_frozen %s -> plastic: %s", sorted(freeze), [] if "all" in syn.frozen else [n for n in self.ctx.net.synapseslices if n not in syn.frozen])
 
     def _persistent(self) -> list:
         """Non-transient arrays."""

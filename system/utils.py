@@ -11,10 +11,11 @@ from functools import singledispatch
 from datetime import datetime  
 import numpy as np
 import logging
-from paths import EXPORT_DIR, MNIST_PATH, MNIST_URL, FMNIST_PATH, FMNIST_URL
+from paths import ROOT_DIR, EXPORT_DIR, MNIST_PATH, MNIST_URL, FMNIST_PATH, FMNIST_URL
 import gzip
 from urllib.request import urlretrieve
 import operator
+import subprocess
 
 
 logger = logging.getLogger(__name__)
@@ -303,6 +304,21 @@ def _read_responses_npz(file: str | Path) -> Dict[str, np.ndarray]:
 
 ####################################################################################
 ############################## HASHING ##############################
+
+def git_state() -> dict:
+    """Which code produced this result: git_commit (hash of HEAD) and git_status ("dirty" = uncommitted edits to tracked files at start, "clean"; untracked files are ignored)."""
+    try:
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, capture_output=True, text=True, timeout=10).stdout.strip()
+        dirty = bool(subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT_DIR, capture_output=True, text=True, timeout=10).stdout.strip())
+        return {"git_commit": head or None, "git_status": "dirty" if dirty else "clean"}
+    except Exception:
+        return {"git_commit": None, "git_status": None}
+
+def versions() -> dict:
+    """Which interpreter and numpy produced this result (RunMeta.python_version / numpy_version; informational, not hashed)."""
+    import platform
+    return {"python_version": platform.python_version(), "numpy_version": np.__version__}
+
 
 def _hash(canon, digest_size=None):
     """Hash using json.dumps to dump to str bytes, then blake2b"""

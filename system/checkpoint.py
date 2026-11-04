@@ -5,6 +5,7 @@ from dataclasses import dataclass, asdict, field
 from typing import Any, Dict, Literal, Optional
 from pathlib import Path
 import logging
+import json
 import re      
 from runcfg import CheckpointCfg
 
@@ -153,6 +154,23 @@ class CheckpointPolicy:
         logger.warning("Collapse checkpoint taken at epoch %d: %s", epoch, health)
         return self.collapse
 
+    def reload_best(self, *, epoch: int, score: float | None) -> Optional[Checkpoint]:
+        """##resolved resume issue: after a resume the fit's best epoch is known (Operations' bookkeeping) but its weights are not in memory any more.
+        select="best": read them back from the TrainedModel file on_epoch_end wrote on that improvement (to_disk), checked by its epoch; if there is
+        no such file (to_disk False, another folder), a WARNING: finalize() then restores nothing unless a later epoch improves. select="final": no-op."""
+        if self.cfg.select != "best" or self.best is not None:
+            return self.best
+        path = (RUNS_DIR if self.out_dir is None else self.out_dir) / f"TrainedModel_{getattr(self._runmeta, 'run_id', None) or 'unknown'}.npz"
+        if self.cfg.to_disk and path.exists():
+            snapshot = load_trained_model(path)
+            if snapshot.reason == "best" and snapshot.epoch == int(epoch):
+                self.best = snapshot
+                logger.info("resume: best epoch %d (score=%s) taken back from %s", epoch, score, path.name)
+                return self.best
+        logger.warning("resume: the best epoch's (%d, score=%s) weights are not on disk (%s, CheckpointCfg.to_disk=%r): select='best' can only "
+                       "restore an epoch from here on.", epoch, score, path.name, self.cfg.to_disk)
+        return None
+
     def finalize(self, ctx=None, modules: dict = None) -> Optional[Checkpoint]:
         """select="best": restore the best snapshot. select="final": no-op (the final state IS the model). Returns the best, if any.
         ctx/modules default to the bound ones."""
@@ -190,6 +208,12 @@ class CheckpointPolicy:
         """Load a snapshot written by on_sample_end into the bound ctx + modules, and its proto__* into `protocol`.
         Returns the snapshot's progress (the protocol continues from it)."""
         snapshot = load_snapshot(path)
+        with np.load(Path(path), allow_pickle=False) as z:            ##the snapshot's provenance (run_id of the run that wrote it)
+            written_by = json.loads(str(z["meta"])).get("run_id") if "meta" in z.files else None
+        mine = getattr(self._runmeta, "run_id", None)
+        if written_by and mine and written_by != mine:
+            logger.warning("resume: snapshot %s was written by run_id %s, this run is %s (changed cfg, network or code version with the same "
+                           "run folder). Continuing with it.", Path(path).name, written_by, mine)
         restore_snapshot(self._ctx, snapshot, modules=self._modules)
         
         self._ctx.sim.current_runstep, self._ctx.sim.current_epoch = snapshot.runstep, snapshot.epoch

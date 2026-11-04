@@ -440,6 +440,12 @@ def spike_counts(ctx: RunContext, history, *, since_event: int | None = None, si
     return counts if group is None else counts[ctx.net.neuronslices[group]]
 
 
+def membrane(ctx: RunContext, group: str | None = None) -> np.ndarray:
+    """V of one neuron group (a copy of its W-row band; None = every recurrent neuron). The readout of a layer that does not spike
+    (Mozafari et al. 2019's decision layer: the neuron with the highest potential at the end of the sample)."""
+    return ctx.neur.V[ctx.net.rec_slice if group is None else post_rows(ctx, group)].copy()
+
+
 def spike_count_responses(per_sample_counts: list[np.ndarray]) -> np.ndarray:
     """Stack per-sample spike-count vectors into (n_samples, n_neurons) for scoring."""
     return np.vstack([np.asarray(c, dtype=np.float64) for c in per_sample_counts])

@@ -23,7 +23,8 @@
 # `if __name__ == "__main__":`, and `build` / `load` must be importable from the child (experiments/__init__.py sets sys.path).
 # The child's logging goes to its run folder's run.jsonl / results.jsonl; the console shows the parent's lines only.
 #
-#NOT BUILT: a pruning callback (Optuna's trial.report / should_prune needs a metric DURING the run).
+#WATCHING A RUN (##optuna pruning): run_in_process(job, poll=fn, every=30) calls fn() every 30 s while the child runs; True kills the child
+# and the Result comes back with error STOPPED. optuna_sweep's poll reads the run's results.jsonl and asks Optuna whether to stop the trial.
 from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -38,6 +39,7 @@ from runcfg import RunCfg
 logger = logging.getLogger(__name__)
 
 THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS")   ##the libraries NumPy may sit on
+STOPPED = "stopped: poll() returned True"      ##optuna pruning: Result.error of a run that was killed on request (no status.json update, no report)
 
 
 @dataclass(frozen=True)
@@ -126,6 +128,23 @@ def run_parallel(jobs, *, workers: int = 2, threads: int = 1) -> list[Result]:
     return results
 
 
-def run_in_process(job: Job, *, threads: int = 1) -> Result:
-    """ONE job in a fresh process, blocking; the Result as run_parallel gives it. The Optuna objective's one call (header)."""
-    return run_parallel([job], workers=1, threads=threads)[0]
+def run_in_process(job: Job, *, threads: int = 1, poll: Callable[[], bool] | None = None, every: float = 30.0) -> Result:
+    """ONE job in a fresh process, blocking; the Result as run_parallel gives it. The Optuna objective's one call (header).
+    poll (##optuna pruning): called every `every` seconds while the child runs; True kills the child -> Result(error=STOPPED)."""
+    if poll is None:
+        return run_parallel([job], workers=1, threads=threads)[0]
+    out_dir = job.train_kw.get("out_dir")
+    restore = _pinned(threads)
+    try:
+        with mp.get_context("spawn").Pool(1) as pool:
+            pending = pool.apply_async(_execute, (job,))      ##the child runs; this process waits in slices of `every` seconds and polls between them
+            while True:
+                pending.wait(every)
+                if pending.ready():
+                    return pending.get()
+                if poll():
+                    pool.terminate()
+                    logger.info("run_in_process: stopped on poll() -> %s", out_dir)
+                    return Result(None, None, None, None if out_dir is None else str(out_dir), STOPPED)
+    finally:
+        restore()

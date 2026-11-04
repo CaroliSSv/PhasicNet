@@ -73,8 +73,7 @@ class DeltaCurrentSparse(Synapse):
         n_post = syn.weights.n_post
         if self.update_on in ("event", "hybrid_event"):
             active = syn.weights.index.synIDs_by_pre(np.flatnonzero(neur.Spikes))
-            if active.size:
-                active.sort()    ##back to storage (post, pre) order: keeps per-row summation order identical to timestep mode
+            if active.size:       ##edges in pre order (not storage order): the float64 per-row sums differ from timestep mode only below float32 precision
                 I = np.bincount(syn.post[active], weights=syn.W[active], minlength=n_post).astype(np.float32, copy=False)
             else:
                 I = np.zeros(n_post, dtype=np.float32)

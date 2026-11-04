@@ -7,6 +7,7 @@
 #   rate_over_time(run, bin_ms=1000)                         analysis.population_rate per neuron group, train / eval stretches shaded
 #   rates(run)                                               analysis.plot_rate_distribution
 #   separability(run, part="test")                           analysis.plot_separability, scored by scorer.calinski_harabasz
+#   label_responses(run, part="test")                        mean response of every neuron per label, sorted by preferred label (was hlsp_plots)
 #   over_weights(run, y=capture.in_degree, series=...)       ANY capture function of the weights, at every saved weight state (start, snapshots, end)
 #   across_runs(run_dirs, y="test_acc", by="simulation.update_on")   ANY saved value or scorer, one point per run, grouped
 #   all_plots(run_dir)                                       the standard set, saved into <run folder>/plots
@@ -63,6 +64,11 @@ class SavedRun:
     def runcfg(self):
         return self.pnet.runcfg
 
+    @property
+    def has_history(self) -> bool:
+        """A History was saved (train(..., save_history=True)); without it the spike plots are skipped."""
+        return any(self.dir.glob("History_*.json"))
+
     @cached_property
     def history(self) -> RunHistory:
         files = sorted(self.dir.glob("History_*.json"))
@@ -96,7 +102,7 @@ class SavedRun:
         for f in snapshots(self.dir):
             snap = load_snapshot(f)
             states.append((f"stage {int(snap.progress.get('stage', 0))}, {int(snap.progress.get('i', 0))}", snap.W))
-        trained = sorted(self.dir.glob("TrainedModel_*.json"))
+        trained = sorted(self.dir.glob("TrainedModel_*.json"), key=lambda f: f.stat().st_mtime)      ##newest last
         if trained:
             states.append(("end", load_trained_model(trained[-1]).W))
         keep = states[:1]
@@ -195,6 +201,35 @@ def separability(run, *, part: str = "test", path=None):
     return analysis.plot_separability(R, y, score=scorer.calinski_harabasz(R, y), title=f"{run.name} {part}", path=path)
 
 
+def label_responses(run, *, part: str = "test", partitions: int = 1, path=None):
+    """Mean response of every unit to each label, from the saved responses of `part` ("train", "val", "test", ...).   ##MISSING-RESOLUTIONS 4 (was hlsp_plots)
+    Left: units x labels heatmap, units sorted by their preferred label (the one they respond to most). Right: how many units prefer each label and
+    their median selectivity (preferred / mean over labels). partitions > 1: the response is P blocks of N counts, summed to one count per neuron."""
+    run = load(run)
+    R, y = run.responses[f"resp_{part}"].astype(np.float64), run.responses[f"y_{part}"]
+    if R.ndim == 3:                                     ##protocols with several test passes: the first
+        R = R[0]
+    if partitions > 1:
+        R = R.reshape(len(R), partitions, -1).sum(1)
+    classes = np.unique(y)
+    M = np.stack([R[y == c].mean(0) for c in classes], 1)                  ##(units, labels)
+    pref = M.argmax(1)
+    sel = M.max(1) / np.maximum(M.mean(1), 1e-12)
+    order = np.lexsort((-sel, pref))
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 6), gridspec_kw=dict(width_ratios=(2, 1)))
+    im = a1.imshow(M[order], aspect="auto", interpolation="nearest", cmap="viridis")
+    a1.set_xticks(range(len(classes)), classes); a1.set_xlabel("label"); a1.set_ylabel("unit (sorted by preferred label)")
+    fig.colorbar(im, ax=a1, label="mean response per sample")
+    a2.bar(range(len(classes)), np.bincount(pref, minlength=len(classes)), color="0.6", tick_label=classes)
+    a2.set_xlabel("preferred label"); a2.set_ylabel("units")
+    a3 = a2.twinx()
+    a3.plot(range(len(classes)), [np.median(sel[pref == k]) if (pref == k).any() else np.nan for k in range(len(classes))], "o-", color="tab:orange")
+    a3.set_ylabel("median selectivity (preferred / mean)", color="tab:orange")
+    fig.suptitle(f"{run.name}: response by label ({part}, {len(y)} samples); silent units: {int((M.sum(1) == 0).sum())} of {len(M)}")
+    fig.tight_layout()
+    return _out(fig, path)
+
+
    ######################################################################################
 ##########################   The weights over the run   ###################################
    ######################################################################################
@@ -203,6 +238,11 @@ def recurrent_in_degree(ctx, *, post_group: str | None = None, eps: float = 0.0)
     """capture.in_degree counting only edges from non-input groups (input edges stay fixed in most models)."""
     pre = [g for g in ctx.net.neuronslices if not ctx.net.neuronspecs[g].input]
     return sum(capture.in_degree(ctx, post_group=post_group, pre_group=g, eps=eps) for g in pre)
+
+
+def total_degree(ctx, *, group: str, eps: float = 0.0):
+    """Recurrent in-degree + out-degree of every neuron of `group` (hlsp_plots' "total" panel).   ##MISSING-RESOLUTIONS 4"""
+    return recurrent_in_degree(ctx, post_group=group, eps=eps) + capture.out_degree(ctx, pre_group=group, eps=eps)
 
 
 def weight_series(run, y: Callable, **kw) -> tuple[list[str], list]:
@@ -279,14 +319,17 @@ def all_plots(run_dir, *, window_ms: float = 1000.0):
     run = load(run_dir)
     out = run.dir / "plots"
     out.mkdir(exist_ok=True)
-    if run.history.cfg.record_spikes:
-        raster(run, window_ms=(0.0, min(window_ms, run.history.n_steps * run.history.dt)), path=out / "raster.png")
-        rate_over_time(run, path=out / "rate_over_time.png")
-    rates(run, path=out / "rates.png")
+    if run.has_history:                                   ##no History saved (save_history=False): the response and weight plots only
+        if run.history.cfg.record_spikes:
+            raster(run, window_ms=(0.0, min(window_ms, run.history.n_steps * run.history.dt)), path=out / "raster.png")
+            rate_over_time(run, path=out / "rate_over_time.png")
+        rates(run, path=out / "rates.png")
     for part in ("train", "val", "test"):
         if f"resp_{part}" in run.responses and len(run.responses[f"y_{part}"]):
             separability(run, part=part, path=out / f"separability_{part}.png")
+            label_responses(run, part=part, path=out / f"label_responses_{part}.png")      ##MISSING-RESOLUTIONS 4
     groups = _groups(run)
     over_weights(run, recurrent_in_degree, series={g: dict(post_group=g) for g in groups}, ylabel="recurrent in-degree", path=out / "in_degree.png")
     over_weights(run, capture.out_degree, series={g: dict(pre_group=g) for g in groups}, ylabel="out-degree", path=out / "out_degree.png")
+    over_weights(run, total_degree, series={g: dict(group=g) for g in groups}, ylabel="total degree (recurrent in + out)", path=out / "total_degree.png")   ##MISSING-RESOLUTIONS 4
     return out

@@ -30,11 +30,11 @@ from abc import ABC
 from rnghandler import RNGHandler
 from builder import NetBuilder, Network
 from dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
-from runcfg import RunCfg, HistoryCfg, DataCfg
+from runcfg import RunCfg, HistoryCfg, DataCfg, ExperimentCfg
 from meta import RunMeta
 from synapticindex import SynapticIndex
 from synapticindex import SynapticIndex
-from utils import _inf_safe, _hash, _hash_array, _read_json_yaml, _read_net_npz, _write_json_yaml, _filepath, _read_history_npz, _write_history_npz, _COMPARISONS, _capitalize_strip_name   
+from utils import _inf_safe, _hash, _hash_array, _read_json_yaml, _read_net_npz, _write_json_yaml, _filepath, _read_history_npz, _write_history_npz, _COMPARISONS, _capitalize_strip_name, git_state, versions
 from paths import EXPORT_DIR
 from datahandler import DataHandler, _dataset_hash
 from modelinput import ModelInput  
@@ -51,7 +51,7 @@ from checkpoint import CheckpointCfg, restore_snapshot, save_trained_model
 from scorer import ScorerCfg
 from run import Run
 from protocols import Protocol, HoldoutValidation 
-from freeze import _build_freeze_slices, _build_sparse_plastic_mask  
+from freeze import resolve_frozen  
 from dynamics import (Synapse as SynapseRole, Integrator as IntegratorRole,
                           Threshold as ThresholdRole, Plasticity as PlasticityRole,
                           collect_requirements, check_role, _configured_for_network)  
@@ -121,15 +121,15 @@ def _generate_runmeta(cfg_name, run_name, derived_cfg: DynamicsCfg, original_cfg
     Args:
         cfg_id hashes the ORIGINAL cfg (Optuna's input, the reproduction key). 
         derived_cfg_id the DERIVED cfg (from instantiated dynamics-modules collection-sweep)
-        run_id hashes the DERIVED cfg + RunCfg.hashable() (minus the declared exclusions) + rng_spec
+        run_id hashes the DERIVED cfg + RunCfg.hashable() (minus the declared exclusions) + rng_spec + network_id
     """
     cfg_id = _hash(_inf_safe(asdict(original_cfg)), digest_size=8)
     derived_cfg_id = _hash(_inf_safe(asdict(derived_cfg)), digest_size=8)
-    run_id = _hash(_inf_safe(asdict(derived_cfg) | {"runcfg": runcfg.hashable()} | {"rng": rng_spec}), digest_size=16)
+    run_id = _hash(_inf_safe(asdict(derived_cfg) | {"runcfg": runcfg.hashable()} | {"rng": rng_spec} | {"network_id": network_id}), digest_size=16)   ##MISSING-RESOLUTIONS 2: different nets -> different run_id
     ##the FINAL-REFIT protocol fixed by RunCfg.
     return RunMeta(cfg_name=cfg_name, cfg_id=cfg_id, derived_cfg_id=derived_cfg_id, run_name=run_name, run_id=run_id,
                    network_name=network_name, network_id=network_id, dataset_name=dataset_name, dataset_id=dataset_id,
-                   dataset_id_n_samples=dataset_id_n_samples, split_id=split_id, globalseed=rng_spec["seed"], rng_spec=rng_spec)   
+                   dataset_id_n_samples=dataset_id_n_samples, split_id=split_id, globalseed=rng_spec["seed"], rng_spec=rng_spec, **git_state(), **versions())
 @dataclass(frozen=True)
 class RuntimeClasses:
     """
@@ -201,9 +201,7 @@ class PhasicNet:
 
     def load_cfg(self, file: str, fmt: Literal["json","yaml","yml"]|None = None) -> None:
         """Load one canonicalized cfg file into the PhasicNet."""
-        file = _filepath(file)
-        raw_data = _read_json_yaml(file=file, fmt=fmt)
-        self.cfg = DynamicsCfg.load(raw_data)
+        self.cfg = DynamicsCfg.load_file(file, fmt=fmt)          ##MISSING-RESOLUTIONS 1
         logger.info("Loaded cfg: %s", self.cfg)
 
     def load_net(self, file: str, npz_file = None, fmt: Literal["json", "yaml", "yml"] | None = None) -> None:
@@ -239,9 +237,7 @@ class PhasicNet:
         NOTE a protocol cfg subclass is found by protocol_type, so its module must be imported first (same as others)
         
         NOTE Searches in runs/ by default"""
-        file = _filepath(file)
-        raw_data = _read_json_yaml(file=file, fmt=fmt)
-        self.runcfg = RunCfg.load(raw_data)
+        self.runcfg = RunCfg.load_file(file, fmt=fmt)          ##MISSING-RESOLUTIONS 1
         logger.info("Loaded runcfg: %s", asdict(self.runcfg))
 
     def save_runcfg(self, filename: str = None, runcfg: RunCfg | None = None, JSON: bool = False, YAML: bool = True, sort_keys: bool = False, save_to=EXPORT_DIR):
@@ -277,6 +273,27 @@ class PhasicNet:
         
         file = save_to / filename
         _write_json_yaml(file=file, data=export_cfg, JSON=JSON, YAML=YAML, sort_keys=sort_keys, log_label="DynamicsCfg")
+
+    def load_experiment(self, file: str, fmt: Literal["json","yaml","yml"]|None = None) -> ExperimentCfg:
+        """Load ONE experiment file (ExperimentCfg = dynamics + run) -> self.cfg, self.runcfg, self.cfg_name. Returns the ExperimentCfg.
+        NOTE the modules defining its cfg subclasses (cfg_type / protocol_type) must be imported first (same as load_cfg / load_runcfg)"""
+        exp = ExperimentCfg.load_file(file, fmt=fmt)
+        self.cfg, self.runcfg, self.cfg_name = exp.dynamics, exp.run, exp.cfg_name
+        logger.info("Loaded experiment cfg '%s' from %s", exp.cfg_name, file)
+        return exp
+
+    def save_experiment(self, filename: str = None, cfg_name = None, JSON: bool = False, YAML: bool = True, sort_keys: bool = False, save_to=EXPORT_DIR):
+        """Save self.cfg + self.runcfg as ONE experiment file: cfg_name, cfg_id (= RunMeta.cfg_id), dynamics, run.
+        Default name Experiment_<dd-mm_HHMMSS>_<cfg_name>."""
+        if self.cfg is None:
+            raise ValueError("No cfg set")
+        cfg_name = self.cfg_name if cfg_name is None else cfg_name
+        canon = ExperimentCfg(dynamics=self.cfg, run=self.runcfg or RunCfg(), cfg_name=cfg_name)._canonicalize()
+        cfg_id = _hash(_inf_safe(canon["dynamics"]), digest_size=8)
+        if filename is None:
+            filename = f"Experiment_{datetime.now().strftime('%d-%m_%H%M%S')}_{cfg_name if cfg_name is not None else cfg_id}"
+        _write_json_yaml(file=save_to / filename, data=_inf_safe({"cfg_name": cfg_name, "cfg_id": cfg_id, "dynamics": canon["dynamics"], "run": canon["run"]}),
+                         JSON=JSON, YAML=YAML, sort_keys=sort_keys, log_label="ExperimentCfg")
 
 
 
@@ -484,12 +501,7 @@ class PhasicNet:
         Must be called AFTER sparseweights or denseweights are generated"""
         # NOTE     Re-runnable: call again w/ new cfg to re-freeze the SAME network w/ different freeze blocks 
         freeze = () if self.cfg.plasticity is None else getattr(self.cfg.plasticity, "freeze", ())
-        slices = _build_freeze_slices(self.network, freeze)
-        ##frozen as a DICT keyed by group namees
-        by_slices = {tuple(v): k for k, v in self.network.synapseslices.items()}
-        ctx.syn.frozen = {by_slices.get(tuple(p), "all"): p for p in slices}
-        if not isinstance(ctx.syn.weights, DenseWeights):
-            ctx.syn.weights.plastic_mask = _build_sparse_plastic_mask(ctx.syn, self.network.n_total)
+        resolve_frozen(self.network, ctx.syn, freeze)       ##also Run.set_frozen (mid-run)
         return ctx
 
     def _to_dense(self) -> DenseWeights:
@@ -754,7 +766,12 @@ class PhasicNet:
             
             out_dir     = a run FOLDER (receives exports by default)
             resume_from = a snap_*.npz from such a folder (Protocol.resume continues run from it) before execute().
+            run_name / cfg_name: labels only (not in run_id). Defaults: the run folder's name / self.cfg_name, so every runmeta.json carries them.
         """
+        if run_name is None and out_dir is not None:
+            run_name = Path(out_dir).name
+        if cfg_name is None:
+            cfg_name = self.cfg_name
         run = self._prep_run(data, runcfg, cfg_name=cfg_name, run_name=run_name, dataset_name=dataset_name, test_data=test_data)
         protocol = self._instantiate_protocol(run.runcfg, run, out_dir=out_dir)
         run_log = None

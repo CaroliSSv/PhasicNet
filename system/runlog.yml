@@ -16,7 +16,6 @@ formatters:
       module: module
       function: funcName
       line: lineno
-      thread_name: threadName
 filters:
   results:
     name: results                     # the built-in name filter: only records of the `results` logger

@@ -360,3 +360,15 @@ def test_grid_positions_enter_network_id_and_survive_save_load(tmp_path, caplog)
     with caplog.at_level("WARNING"):
         p.network.rehash_network()
     assert "inconsistent" not in caplog.text
+
+
+def test_runmeta_carries_versions_and_the_default_names(tmp_path):
+    """RunMeta records the interpreter / numpy that ran it; run_name defaults to the run folder's name and cfg_name to the PhasicNet's (labels, not hashed)."""
+    import platform
+    pnet = build()
+    pnet.cfg_name = "toy_cfg"
+    named = pnet.train(make_data(), RunCfg(data=DataCfg(test_fraction=0.25)), out_dir=tmp_path / "my_run", save_run=False).runmeta
+    plain = build().train(make_data(), RunCfg(data=DataCfg(test_fraction=0.25)), save_run=False).runmeta
+    assert (named.run_name, named.cfg_name, plain.run_name, plain.cfg_name) == ("my_run", "toy_cfg", None, None)
+    assert named.python_version == plain.python_version == platform.python_version() and named.numpy_version == np.__version__
+    assert named.run_id == plain.run_id

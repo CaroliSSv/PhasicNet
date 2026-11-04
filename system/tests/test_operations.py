@@ -181,10 +181,12 @@ def test_holdoutval_resume_is_bit_identical(tmp_path, monkeypatch):
     assert np.array_equal(back.ctx.syn.W, full.ctx.syn.W) and back.ctx.sim.current_runstep == full.ctx.sim.current_runstep > 0
     assert back.report["fold_scores"] == full.report["fold_scores"] and back.status["progress"] == {"fold": 1, "epoch": 0, "i": 0}
     assert [p.name for p in snapshots(tmp_path / "killed")] == names          ##the resumed run wrote the rest of the carousel
-    ##resumed inside epoch 1 (from the full run's third snapshot, into a new folder): the same W again; this process ran epoch 1 only
+    ##resumed inside epoch 1 (from the full run's third snapshot, into a new folder): the same W again; this process ran epoch 1 only, the report
+    ## covers both epochs (##resolved resume issue: the fit's epochs ride in the snapshot)
     later = S.assemble(fmt="dense")[0].train(S._data(), rc, out_dir=tmp_path / "later", resume_from=tmp_path / "full" / names[2], save_run=False)
     assert np.array_equal(later.ctx.syn.W, full.ctx.syn.W) and later.ctx.sim.current_runstep == full.ctx.sim.current_runstep
-    assert later.report["folds"][0]["epochs_run"] == 1 and later.report["fold_scores"] == full.report["fold_scores"]
+    assert later.report["folds"][0]["epochs_run"] == 2 and later.report["folds"][0]["epochs"] == full.report["folds"][0]["epochs"]
+    assert later.report["fold_scores"] == full.report["fold_scores"]
     ##and without a resume the same recipe does NOT reproduce a half-run: a fresh run from the as-built W differs from the restored one after 3 samples
     assert not np.array_equal(z["W"], full._W0), "the snapshot holds the as-built weights, so the restore proves nothing"
 
@@ -198,15 +200,15 @@ def test_holdoutval_epoch_aligned_every_snapshots_every_epoch_end(tmp_path):
     names = [p.name for p in snapshots(tmp_path / "full")]
     assert names == ["snap_s00_i00000006.npz", "snap_s00_i00000012.npz"] and full.status["last_snapshot"] == names[1]
     assert [load_snapshot(tmp_path / "full" / nm).progress for nm in names] == [{"fold": 0, "epoch": 1, "i": 0}, {"fold": 0, "epoch": 2, "i": 0}]
-    ##from epoch 0's end: epoch 1 alone, the same W and clock
+    ##from epoch 0's end: epoch 1 alone runs, the same W and clock; the report covers both epochs (##resolved resume issue)
     back = S.assemble(fmt="dense")[0].train(S._data(), rc, out_dir=tmp_path / "back", resume_from=tmp_path / "full" / names[0], save_run=False)
     assert np.array_equal(back.ctx.syn.W, full.ctx.syn.W) and back.ctx.sim.current_runstep == full.ctx.sim.current_runstep > 0
-    assert back.report["folds"][0]["epochs_run"] == 1 and back.report["folds"][0]["epochs"] == full.report["folds"][0]["epochs"][1:]
+    assert back.report["folds"][0]["epochs_run"] == 2 and back.report["folds"][0]["epochs"] == full.report["folds"][0]["epochs"]
     assert [p.name for p in snapshots(tmp_path / "back")] == names[1:]
-    ##from epoch 1's end (the fit's last): no epoch runs, the model is the restored one, the run completes
+    ##from epoch 1's end (the fit's last): no epoch runs, the model is the restored one, the run completes with the full report
     done = S.assemble(fmt="dense")[0].train(S._data(), rc, out_dir=tmp_path / "done", resume_from=tmp_path / "full" / names[1], save_run=False)
     assert np.array_equal(done.ctx.syn.W, full.ctx.syn.W) and done.ctx.sim.current_runstep == full.ctx.sim.current_runstep
-    assert done.report["folds"][0]["epochs_run"] == 0 and done.status["status"] == "completed" and done.status["progress"] == {"fold": 1, "epoch": 0, "i": 0}
+    assert done.report["folds"][0]["epochs_run"] == 2 and done.status["status"] == "completed" and done.status["progress"] == {"fold": 1, "epoch": 0, "i": 0}
     assert snapshots(tmp_path / "done") == []
     ##every two epochs
     rc2 = dataclasses.replace(rc, checkpoint=CheckpointCfg(to_disk=False, every=12))
@@ -606,3 +608,82 @@ def test_needs_test_set_is_checked_once_in_protocol_init():
     from krenzer_2025 import RLSMProtocol
     from dc_protocol import DCProtocol
     assert all(p.needs_test_set is True for p in (ELSMProtocol, HLSPProtocol, NALSMProtocol, RLSMProtocol, DCProtocol))
+
+
+# --------------------------------------------------------------------- 8. ##resolved resume issue: the fit's bookkeeping survives a resume
+def _kill_after_snapshot(monkeypatch, n: int, stage: int | None = None):
+    """The crash of a long run: the policy writes its n-th snapshot (of `stage`, when given) and the process dies."""
+    orig = CheckpointPolicy.on_sample_end
+    seen = []
+    def kill(policy, **kw):
+        path = orig(policy, **kw)
+        if path is not None and (stage is None or kw["stage"] == stage):
+            seen.append(path)
+            if len(seen) == n:
+                raise KeyboardInterrupt
+        return path
+    monkeypatch.setattr(CheckpointPolicy, "on_sample_end", kill)
+
+
+def test_holdoutval_resume_keeps_best_patience_and_the_epoch_health(tmp_path, monkeypatch):
+    """A fit with patience and select="best", killed inside epoch 2 and resumed, stops at the same epoch as the straight run and reports the same epochs
+    (the resumed epoch's health probe covers the whole epoch), the same checkpoint book and the same best weights (taken back from its TrainedModel file)."""
+    rc = RunCfg(protocol=ProtocolCfg(epochs=4, val_split=0.25, patience=2), scorer=ScorerCfg(rate_hz_min=0.0),
+                checkpoint=CheckpointCfg(to_disk=True, every=3, keep_last=None, select="best"), data=DataCfg(test_fraction=0.25))
+    full = S.assemble(fmt="dense")[0].train(S._data(), rc, out_dir=tmp_path / "full", save_run=False)
+    fr = full.report["folds"][0]
+    assert fr["stopped"] == "patience" and fr["epochs_run"] == 3 and fr["best_epoch"] == 0      ##the toy's premise: equal val scores, epoch 0 stays best, patience ends the fit
+    names = [p.name for p in snapshots(tmp_path / "full")]
+    assert len(names) == 5                                                                       ##the patience stop writes no epoch-end snapshot
+    book = json.loads(str(load_snapshot(tmp_path / "full" / names[4]).protocol_state["ops"]))     ##the ops' bookkeeping rides in the snapshot
+    assert book["fit"]["stale_epochs"] == 1 and book["fit"]["best_epoch"] == 0 and len(book["epoch_log"]) == 2 and book["fit"]["part"]["i"] == 3
+    _kill_after_snapshot(monkeypatch, 5)
+    with pytest.raises(KeyboardInterrupt):
+        S.assemble(fmt="dense")[0].train(S._data(), rc, out_dir=tmp_path / "killed", save_run=False)
+    monkeypatch.undo()
+    st = json.loads((tmp_path / "killed" / "status.json").read_text())
+    assert st["progress"] == {"fold": 0, "epoch": 2, "i": 3}
+    back = S.assemble(fmt="dense")[0].train(S._data(), rc, out_dir=tmp_path / "killed", resume_from=tmp_path / "killed" / st["last_snapshot"], save_run=False)
+    br = back.report["folds"][0]
+    assert all(br[k] == fr[k] for k in ("score", "best_score", "best_epoch", "last_score", "stopped", "epochs_run", "epochs", "checkpoints")), \
+        [(k, br[k], fr[k]) for k in ("stopped", "epochs_run", "epochs", "checkpoints") if br[k] != fr[k]]
+    assert np.array_equal(back.ctx.syn.W, full.ctx.syn.W) and (back.checkpoints.best.reason, back.checkpoints.best.epoch) == ("best", 0)
+    assert [p.name for p in snapshots(tmp_path / "killed")] == names and back.report["fold_scores"] == full.report["fold_scores"]
+    ##the same snapshot without its bookkeeping (older code) still resumes: best / patience restart, the fit then runs every epoch
+    z = np.load(tmp_path / "full" / names[4]); stripped = {k: z[k] for k in z.files if k != "proto__ops"}
+    np.savez(tmp_path / "old.npz", **stripped)
+    old = S.assemble(fmt="dense")[0].train(S._data(), rc, out_dir=tmp_path / "old", resume_from=tmp_path / "old.npz", save_run=False)
+    assert old.report["folds"][0]["epochs_run"] == 2 and old.report["folds"][0]["stopped"] is None
+
+
+class _TwoFold(Protocol):
+    """run_folds over TWO partitions (each half of the train set validates the other), epochs=2."""
+    protocol_type = "TWOFOLD"
+
+    def execute(self):
+        a, b = self.run.datahandler.fold_split(self.run.train_set, val_split=0.5, rng=self.rng.rng("data", "halves"), stratify=False)[0]
+        self.run.report = {**self.ops.run_folds([(a, b), (b, a)], epochs=self.cfg.epochs), **self.report()}
+        return self.run.report
+
+
+def test_run_folds_resumed_inside_fold_1_reports_both_folds(tmp_path, monkeypatch):
+    """A two-fold run killed inside fold 1 and resumed reports fold 0 (from the snapshot's reports) and fold 1: the same fold_scores and mean as the straight run."""
+    def build():
+        pnet = S.assemble(fmt="dense")[0]
+        pnet.set_runtime_classes(protocol_classes=(_TwoFold,))
+        return pnet
+    rc = RunCfg(protocol=ProtocolCfg("twofold", epochs=2), scorer=ScorerCfg(rate_hz_min=0.0), checkpoint=CheckpointCfg(to_disk=False, every=2, keep_last=None),
+                data=DataCfg(test_fraction=0.25))
+    full = build().train(S._data(), rc, out_dir=tmp_path / "full", save_run=False)
+    assert len(full.report["fold_scores"]) == 2 and [r["fold"] for r in full.report["folds"]] == [0, 1]
+    _kill_after_snapshot(monkeypatch, 1, stage=1)
+    with pytest.raises(KeyboardInterrupt):
+        build().train(S._data(), rc, out_dir=tmp_path / "killed", save_run=False)
+    monkeypatch.undo()
+    st = json.loads((tmp_path / "killed" / "status.json").read_text())
+    assert st["progress"] == {"fold": 1, "epoch": 0, "i": 2}
+    back = build().train(S._data(), rc, out_dir=tmp_path / "killed", resume_from=tmp_path / "killed" / st["last_snapshot"], save_run=False)
+    assert back.report["fold_scores"] == full.report["fold_scores"] and back.report["score"] == full.report["score"]
+    keys = ("fold", "score", "best_epoch", "epochs_run", "epochs")
+    assert [{k: r[k] for k in keys} for r in back.report["folds"]] == [{k: r[k] for k in keys} for r in full.report["folds"]]
+    assert np.array_equal(back.ctx.syn.W, full.ctx.syn.W)

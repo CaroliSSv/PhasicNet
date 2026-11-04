@@ -436,6 +436,6 @@ def test_grid_fields_are_canonical_like_every_other_field():
     canon = _canonicalize_netspecs({"a": NeuronSpec("a", 3, True)}, {})
     assert canon["neuronspecs"]["a"] == {"neur_type": "a", "n": 3, "input": True, "inh": False, "grid": None, "grid_share": None}
     assert not hasattr(N, "_canon_neuronspec") and not hasattr(N, "_SPATIAL_FIELDS")
-    assert B.DISTANCE_KERNELS == ("gaussian",) and not hasattr(B, "KERNELS")
+    assert B.DISTANCE_KERNELS == ("gaussian", "column") and not hasattr(B, "KERNELS")
     with pytest.raises(ValueError, match="Known kernels"):
         B._check_kernel("s", {"kernel": "boxcar", "C": 0.5, "lambda": 1.0})

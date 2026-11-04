@@ -146,6 +146,17 @@ def _build_freeze_slices(net, freeze: Iterable[str] | None = None) -> Tuple[Weig
                            sorted(freeze))
     return frozen_slices
 
+def resolve_frozen(net, syn, freeze: Iterable[str] | None) -> None:
+    """freeze (as PlasticityCfg.freeze) -> syn.frozen {group name | "all": WeightProjection}, and for sparse W the plastic mask.
+    Called by PhasicNet._implement_freeze (build) and Run.set_frozen (mid-run)."""
+    slices = _build_freeze_slices(net, freeze)
+    ##frozen as a DICT keyed by group namees
+    by_slices = {tuple(v): k for k, v in net.synapseslices.items()}
+    syn.frozen = {by_slices.get(tuple(p), "all"): p for p in slices}
+    if syn.W.ndim == 1:
+        syn.weights.plastic_mask = _build_sparse_plastic_mask(syn, net.n_total)
+
+
 def _build_sparse_plastic_mask(syn, n_total: int) -> np.ndarray:
     """
     Generate the sparse PLASTIC mask: one bool per realized edge, True = may learn (realized AND not frozen).

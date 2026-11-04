@@ -7,7 +7,10 @@
 #   boundary                    PhasicNet.train() around protocol.execute(): status.json (RunStatus) + run.jsonl / results.jsonl.
 #
 #RESUME: progress = {"stage": s, "i": done} for a pass, {"fold": k, "epoch": e, "i": done} for a fit; saved in every snapshot (snap_s<stage>_i<position>.npz).
-# NOT restored: the fit's best / patience bookkeeping and the phase state (a run resumes in DEFAULT).
+# ##resolved resume issue: the fit's bookkeeping (best / patience, epoch_log, the finished folds' reports) goes into every snapshot too (proto__ops,
+# Operations.state_dict, through Protocol.state_dict), so a resumed fit continues its patience count, keeps its earlier epochs in the report and
+# a resumed run_folds reports every fold; select="best" takes the best epoch's weights back from the TrainedModel file (CheckpointPolicy.reload_best).
+# NOT restored: the phase state (a run resumes in DEFAULT).
 #RULE: nothing here runs INSIDE a step; reporting, timing and snapshots happen at sample boundaries.
 from __future__ import annotations
 from dataclasses import asdict
@@ -15,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from time import perf_counter
 from typing import Any, Callable, List
+import json
 import logging
 import traceback
 import weakref
@@ -57,12 +61,28 @@ class Operations:
         self.progress: dict = {}
         self.seconds: dict = {}
         self.epoch_log: List[dict] = []     ##cleared by run_fit: ONE fit's epochs
+        self._fit: dict = {}                ##resolved resume issue: the running fit's best / patience bookkeeping (run_fit), saved with every snapshot
+        self._fold_reports: list = []       ##resolved resume issue: the reports of the folds run_folds has finished, saved with every snapshot
         self._t0 = perf_counter()
 
     @property
     def state(self):
         """The Protocol (or None): whose state_dict the snapshots carry, whose cfg / report() finish() reads."""
         return None if self._state is None else self._state()
+
+    ##resolved resume issue: what a snapshot carries of the ops themselves, beside the protocol's arrays (Protocol.state_dict adds it as proto__ops):
+    ## the running fit's bookkeeping, its epoch_log and the finished folds' reports, as ONE json string (the arrays rule does not fit lists of dicts)
+    @property
+    def state_dict(self) -> dict:
+        plain = lambda v: v.item() if isinstance(v, np.generic) else str(v)
+        return {"ops": np.asarray(json.dumps({"fit": self._fit, "epoch_log": self.epoch_log, "fold_reports": self._fold_reports}, default=plain))}
+
+    def load_state_dict(self, state: dict) -> None:
+        """Inverse of state_dict. A snapshot without "ops" (written before this existed) restarts the bookkeeping, as before."""
+        d = json.loads(str(state["ops"])) if "ops" in state else {}
+        self._fit, self.epoch_log, self._fold_reports = d.get("fit", {}), d.get("epoch_log", []), d.get("fold_reports", [])
+        if not d:
+            logger.info("resume: the snapshot has no fit bookkeeping (older code): best / patience and the finished folds' reports restart here")
 
     # -------------------------------------------------------------------------
     # one sample
@@ -227,7 +247,11 @@ class Operations:
 
         pass_mark = history.mark()
         reset = self.reset_between_samples
-        steps = 0
+        ##resolved resume issue: the part of THIS epoch run before a resume (its steps and spikes, saved with the snapshot) counts in the epoch's
+        ## summary, so the health probe sees the whole epoch; a mark() can only see this process's spikes
+        part = self._fit.get("part") or {}
+        carried = part if i0 and (part.get("fold"), part.get("epoch"), part.get("i")) == (fold, epoch, i0) else {}
+        steps = int(carried.get("steps", 0))
         targets = []
         responses: List[np.ndarray] = []
 
@@ -250,13 +274,17 @@ class Operations:
             bar.update(1)
             if fold is not None and position + 1 < n:       ##resumable position + scheduled snapshot; the epoch's last sample is run_fit's, after the val pass
                 self.progress = {"fold": int(fold), "epoch": int(epoch), "i": position + 1}
+                so_far = history.since(pass_mark)
+                self._fit["part"] = {"fold": int(fold), "epoch": int(epoch), "i": position + 1, "steps": steps,
+                                     "spikes": int(so_far.sum()) + int(carried.get("spikes", 0)), "recurrent": int(so_far[ctx.net.n_input:].sum()) + int(carried.get("recurrent", 0))}
                 run.checkpoints.on_sample_end(stage=fold, position=epoch * n + position + 1, progress=self.progress, protocol=self.state)
         bar.close()
 
         counts = history.since(pass_mark)
-        recurrent = int(counts[ctx.net.n_input:].sum())
+        recurrent = int(counts[ctx.net.n_input:].sum()) + int(carried.get("recurrent", 0))
+        spikes = int(counts.sum()) + int(carried.get("spikes", 0))
         summary = {"epoch": sim.current_epoch, "samples": n, "steps": steps,
-                   "spikes": int(counts.sum()) if history.cfg.include_input else recurrent, "recurrent_spikes": recurrent, "targets": targets}
+                   "spikes": spikes if history.cfg.include_input else recurrent, "recurrent_spikes": recurrent, "targets": targets}
         if collect_responses and responses:
             summary["responses"] = capture.spike_count_responses(responses)
         logger.info("epoch %d: samples=%d steps=%d spikes=%d",
@@ -287,9 +315,18 @@ class Operations:
         e0 = int(p.get("epoch", 0)) if resumed else 0
         if not resumed:
             run.reset_model()
-        stale_epochs = 0
+        ##resolved resume issue: a resumed fit takes its best / patience bookkeeping and its epoch_log back from the snapshot (load_state_dict) instead of restarting them
+        fit = self._fit if resumed and self._fit.get("fold") == fold else {}
+        best_score, best_epoch, last_score, stale_epochs = fit.get("best_score"), fit.get("best_epoch"), fit.get("last_score"), int(fit.get("stale_epochs", 0))
+        if not fit:
+            self.epoch_log = []
+        self._fit = {"fold": fold, "best_score": best_score, "best_epoch": best_epoch, "last_score": last_score, "stale_epochs": stale_epochs,
+                     "part": fit.get("part"), "book": fit.get("book", [])}
+        if fit:
+            run.checkpoints.history = list(self._fit["book"])        ##the policy's epoch book (report["checkpoints"]["epochs"]) continues too
+            if best_epoch is not None:
+                run.checkpoints.reload_best(epoch=best_epoch, score=best_score)     ##select="best": the best epoch's weights, from its TrainedModel file
         stop_reason = None
-        self.epoch_log = []
 
         bar = tqdm(total=epochs, initial=e0, desc=" epochs")
         for e in range(e0, epochs):     ##e = the epoch within THIS fit (sim.current_epoch counts across fits)
@@ -326,6 +363,8 @@ class Operations:
 
             self.epoch_log.append({"epoch": sim.current_epoch, "score": score,
                                    "collapsed": collapsed, **health})
+            self._fit.update(best_score=best_score, best_epoch=best_epoch, last_score=last_score, stale_epochs=stale_epochs,
+                             part=None, book=run.checkpoints.history)     ##resolved resume issue: into the next snapshot
             results_log.info("epoch", extra=fields({"fold": fold, **self.epoch_log[-1]}))
             bar.set_postfix(score=None if score is None else round(score, 2),
                             rate=round(health["rate_hz"], 1))
@@ -387,8 +426,10 @@ class Operations:
             score = MEAN over folds. NOT the max. std is returned alongside; fold_scores, folds (each fold's run_fit summary)
         """
         epochs = int(epochs or 1)
-        fold_scores, fold_reports = [], []
         k0 = int(self.progress.get("fold", 0))
+        ##resolved resume issue: the folds finished before a resume are in the snapshot's reports (load_state_dict), so the mean is over EVERY fold
+        fold_reports = [r for r in self._fold_reports if int(r.get("fold", -1)) < k0]
+        fold_scores = [r["score"] for r in fold_reports if r.get("score") is not None]
 
         bar = tqdm(total=len(partitions), initial=min(k0, len(partitions)), desc="folds")
         for k, (train, val) in enumerate(partitions):
@@ -397,6 +438,7 @@ class Operations:
                 continue
             report = self.run_fold(train, val, fold=k, epochs=epochs, patience=patience, shuffle=shuffle)
             fold_reports.append(report)
+            self._fold_reports = fold_reports               ##resolved resume issue: into the snapshots of the next fold
             if report["score"] is not None:
                 fold_scores.append(report["score"])
             bar.update(1)

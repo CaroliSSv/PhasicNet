@@ -20,7 +20,7 @@ CONNECTIVITY_PATTERNS: Dict[str, Callable[[int, int], np.ndarray]] = {
     "one_to_one":   lambda pre_n, post_n: np.eye(pre_n, post_n, dtype=bool),
     "all_but_self": lambda pre_n, post_n: ~np.eye(pre_n, post_n, dtype=bool)}
 _SQUARE_PATTERNS = ("one_to_one", "all_but_self")  
-DISTANCE_KERNELS = ("gaussian",)  ## (spatial): distance kernels  
+DISTANCE_KERNELS = ("gaussian", "column")  ## (spatial): distance kernels  
 
 #(spatial): safetyvalve 
 def _check_kernel(syn_type: str, prob: dict) -> dict:
@@ -28,6 +28,8 @@ def _check_kernel(syn_type: str, prob: dict) -> dict:
     kernel = prob.get("kernel")
     if kernel not in DISTANCE_KERNELS:     
         raise ValueError(f"Connectivity for '{syn_type}': unknown kernel {kernel!r}. Known kernels: {DISTANCE_KERNELS}.")
+    if kernel == "column":
+        return _check_column(syn_type, prob)
     missing = [k for k in ("C", "lambda") if k not in prob]
     if missing or set(prob) - {"kernel", "C", "lambda"}:
         raise ValueError(f"Connectivity for '{syn_type}': a kernel needs exactly the keys kernel, C, lambda. Got {sorted(prob)}.")
@@ -37,6 +39,27 @@ def _check_kernel(syn_type: str, prob: dict) -> dict:
     if not lam > 0.0:
         raise ValueError(f"Connectivity for '{syn_type}': lambda must be > 0, got {lam!r}.")
     return {"kernel": kernel, "C": C, "lambda": lam}
+
+
+def _check_column(syn_type: str, prob: dict) -> dict:
+    """column kernel: {"kernel": "column", "p": float} + optional "rf" and "stride" (together), "dims", "pattern". Only the keys given are kept."""
+    if "p" not in prob or set(prob) - {"kernel", "p", "rf", "stride", "dims", "pattern"}:
+        raise ValueError(f"Connectivity for '{syn_type}': a column kernel needs the key p (optional: rf + stride, dims, pattern). Got {sorted(prob)}.")
+    if ("rf" in prob) != ("stride" in prob):
+        raise ValueError(f"Connectivity for '{syn_type}': column kernel keys rf and stride go together. Got {sorted(prob)}.")
+    out = {"kernel": "column", "p": float(prob["p"])}
+    if not 0.0 <= out["p"] <= 1.0:
+        raise ValueError(f"Connectivity for '{syn_type}': p must be in [0, 1], got {prob['p']!r}.")
+    for key in ("rf", "stride", "dims"):
+        if key in prob:
+            out[key] = int(prob[key])
+            if out[key] < 1:
+                raise ValueError(f"Connectivity for '{syn_type}': {key} must be a positive int, got {prob[key]!r}.")
+    if "pattern" in prob:
+        if prob["pattern"] not in _SQUARE_PATTERNS:
+            raise ValueError(f"Connectivity for '{syn_type}': column pattern must be one of {_SQUARE_PATTERNS}, got {prob['pattern']!r}.")
+        out["pattern"] = prob["pattern"]
+    return out
 
 
 def _grid_cells(grid: Tuple[int, ...]) -> np.ndarray:
@@ -82,6 +105,29 @@ def _kernel_mask(syn: str, kernel: dict, pos_pre: np.ndarray, pos_post: np.ndarr
     D2 = np.einsum("ijk,ijk->ij", diff, diff)                              ##squared distance, no sqrt needed: (D / lambda)^2 = D2 / lambda^2
     P = kernel["C"] * np.exp(-D2 / (kernel["lambda"] ** 2))
     return rng.random(P.shape, dtype=np.float32) < P
+
+def _column_mask(syn: str, kernel: dict, pos_pre: np.ndarray, pos_post: np.ndarray, rng) -> np.ndarray:
+    """(microcolumns) The first `dims` (default 2) grid coordinates are the COLUMN, the rest the slot inside it.
+    Post column x takes pre column u if x*stride <= u < x*stride + rf in every dim; without rf/stride: u == x (the same column).
+    pattern pairs the slots: "one_to_one" = same slot, "all_but_self" = other slots. Each allowed pair connects with probability p."""
+    d = kernel.get("dims", 2)
+    if pos_pre.shape[1] < d or pos_post.shape[1] < d:
+        raise ValueError(f"Synapse '{syn}': column kernel dims={d}, but the grids have {pos_pre.shape[1]} (pre) and {pos_post.shape[1]} (post) coordinates.")
+    mask = np.ones((len(pos_pre), len(pos_post)), dtype=bool)
+    for k in range(d):
+        u, x = pos_pre[:, k, None].astype(np.int64), pos_post[None, :, k].astype(np.int64)
+        if "rf" in kernel:
+            mask &= (u >= x * kernel["stride"]) & (u < x * kernel["stride"] + kernel["rf"])
+        else:
+            mask &= u == x
+    if "pattern" in kernel:
+        if pos_pre.shape[1] != pos_post.shape[1] or pos_pre.shape[1] == d:
+            raise ValueError(f"Synapse '{syn}': column pattern {kernel['pattern']!r} needs slot coordinates of the same length on both grids.")
+        same = np.all(pos_pre[:, None, d:] == pos_post[None, :, d:], axis=2)
+        mask &= same if kernel["pattern"] == "one_to_one" else ~same
+    if kernel["p"] < 1.0:
+        mask &= rng.random(mask.shape, dtype=np.float32) < kernel["p"]
+    return mask
 
 ############## Generate META #######################
 
@@ -285,6 +331,8 @@ class NetBuilder:
             network.set_connectivity({"exc_exc":0.1, "exc_inh"=0.2})
         OR:
             network.set_connectivity(exc_exc=0.1, exc_inh="one_to_one")
+        Spatial (set_positions first): {"kernel": "gaussian", "C", "lambda"} or {"kernel": "column", "p", optional "rf"+"stride", "dims", "pattern"}:
+            network.set_connectivity(in_L1={"kernel": "column", "rf": 4, "stride": 4, "p": 1.0}, L1_ee={"kernel": "column", "p": 0.1})
         """
         synapses: Dict[str, float | str] = {}
         if mapping is not None:
@@ -585,7 +633,8 @@ class NetBuilder:
                                      f"the same size. Got pre '{pre_neuron}' n={pre_n}, post '{post_neuron}' n={post_n}.")
                 mask = CONNECTIVITY_PATTERNS[syn_spec.p_connection](pre_n, post_n)
             elif isinstance(syn_spec.p_connection, dict):   ## spatial p(syn) =from distance** 
-                mask = _kernel_mask(syn, syn_spec.p_connection, positions[pre_neuron], positions[post_neuron], syn_rng[syn])
+                kernel_mask = _column_mask if syn_spec.p_connection["kernel"] == "column" else _kernel_mask
+                mask = kernel_mask(syn, syn_spec.p_connection, positions[pre_neuron], positions[post_neuron], syn_rng[syn])
             else:
                 mask = syn_rng[syn].random((pre_n, post_n), dtype=np.float32) < syn_spec.p_connection
 

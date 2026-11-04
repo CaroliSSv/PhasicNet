@@ -41,4 +41,8 @@ class RunMeta:
     split_id: str = None         ##which TEST set: hash of the held-out indices (own split), or the given test set's dataset hash
     globalseed:int = None
     rng_spec:Dict = None
+    git_commit: str = None       ##code version: hash of HEAD at run start (not part of run_id)
+    git_status: str = None       ##"dirty" = uncommitted edits at run start, "clean"
+    python_version: str = None   ##the interpreter and numpy that ran it (utils.versions; not part of run_id, like git_commit)
+    numpy_version: str = None
 

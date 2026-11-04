@@ -33,14 +33,14 @@
 #Run (from the repo root, PowerShell):  python -c "import experiments, dc_reproduce; dc_reproduce.main(tag='e100_bench', n_train=1000, n_assign=1000, n_test=1000, test_passes=1)"
 #                                      main(tag="e100_40k")                                                   (the paper's 100-neuron experiment)
 from __future__ import annotations
-import logging, subprocess
+import logging
 from pathlib import Path
 import numpy as np
 from runcfg import RunCfg, DataCfg, CheckpointCfg, ScorerCfg, HistoryCfg
-from paths import RAW_DIR, RUNS_DIR, ROOT_DIR
+from paths import RAW_DIR, RUNS_DIR
 from preprocessing import load_mnist
 from checkpoint import load_trained_model, restore_snapshot
-from utils import _write_json_yaml, _read_json_yaml
+from utils import _write_json_yaml, _read_json_yaml, git_state
 from modelinput import ModelInput
 from diehl_cook_2015 import build, fresh_network, DT_MS, T_PRESENT_MS, T_REST_MS, INPUT_INTENSITY, SEED, DCPoissonImages, mnist_input
 from dc_protocol import DCProtocol, DCProtocolCfg                   ##the protocol itself (TRAIN / ASSIGN / TEST / REPORT)
@@ -48,21 +48,6 @@ from phasicnet import PhasicNet
 from network import Network
 
 logger = logging.getLogger("dc_reproduce")
-
-
-   ######################################################################################
-##########################   Code state   #################################################
-   ######################################################################################
-
-def git_state() -> dict:
-    """Which code produced this result: git_commit (hash of HEAD) and git_status ("dirty" = uncommitted edits at start, "clean").
-    Written flat into protocol.json."""
-    try:
-        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT_DIR, capture_output=True, text=True, timeout=10).stdout.strip()
-        dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=ROOT_DIR, capture_output=True, text=True, timeout=10).stdout.strip())
-        return {"git_commit": head or None, "git_status": "dirty" if dirty else "clean"}
-    except Exception:
-        return {"git_commit": None, "git_status": None}
 
 
    ######################################################################################

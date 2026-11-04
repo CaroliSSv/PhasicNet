@@ -46,7 +46,9 @@ import matplotlib.pyplot as plt
 import analysis, capture
 from phasicnet import PhasicNet
 from dynamicscfg import DynamicsCfg, SimulationCfg, SynapseCfg, IntegratorCfg, ThresholdCfg, PlasticityCfg, NoiseCfg, PhaseCfg
-from runcfg import RunCfg, DataCfg, HistoryCfg
+from runcfg import RunCfg, DataCfg, HistoryCfg, ProtocolCfg
+from modelinput import ModelInput          ##wire through modelinput: train() and the probe pass take a ModelInput only
+from operations import Operations
 from dynamics import Synapse
 from states import RunContext
 from original_dynamics import LIFeuler, StaticThreshold, TraceSTDP
@@ -304,7 +306,9 @@ def separability_probe(run, rng_handler, n_per_class: int):
             run.reset_model()                                          ##back to the as-built random weights; same stimuli
             ##the classes come from the TRAINED weights: the correlation says how much of that pattern the untrained weights already had
             out["weight_corr"] = float(np.corrcoef(run.ctx.syn.W[0, :n_in], w_trained)[0, 1])
-        summary = run._epoch(stream, shuffle=False, collect_responses=True, learn=False)       ##the call run.test() makes; test() returns only the score
+        run.set_mode("eval")                                                                  ##learning OFF (what run.test() does)
+        probe = ModelInput.from_tonic(stream, axis_labels="TX")                                ##wire through modelinput: [i] = (frames, i % 2)
+        summary = Operations(run).run_epoch(probe, shuffle=False, collect_responses=True)
         ##the first n_in columns are the recorded STIMULUS (include_input=True), not the response: keep only the output neuron
         responses = np.asarray(summary["responses"])[:, n_in:]
         labels = np.asarray(summary["targets"])
@@ -325,8 +329,8 @@ def plot_probe(out, path: Path) -> Path:
 def main(duration_s: float = DURATION_S, probe_per_class: int = PROBE_PER_CLASS):
     n_chunks = int(round(duration_s / CHUNK_S))
     pnet = build()
-    data = PoissonStream(pnet.rng, N, F, DT_MS, CHUNK_S, n_chunks)
-    runcfg = RunCfg(epochs=1, data=DataCfg(test_fraction=0.0), history=HistoryCfg(include_input=True))   ##no test set, no folds, no validation: ONE training pass. Inputs recorded for the raster
+    data = ModelInput.from_tonic(PoissonStream(pnet.rng, N, F, DT_MS, CHUNK_S, n_chunks), axis_labels="TX")   ##wire through modelinput: [i] = (frames, 0)
+    runcfg = RunCfg(protocol=ProtocolCfg(epochs=1), data=DataCfg(test_fraction=0.0), history=HistoryCfg(include_input=True))   ##no test set, no folds, no validation: ONE training pass. Inputs recorded for the raster
     t0 = time.perf_counter()
     run = pnet.train(data, runcfg, cfg_name=pnet.cfg_name, run_name=pnet.run_name, dataset_name="poisson_15Hz", save_run=True, save_history=True)   ##train() takes the names from ITS arguments; pnet.run_name alone is ignored
     wall = time.perf_counter() - t0

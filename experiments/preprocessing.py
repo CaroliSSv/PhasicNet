@@ -285,4 +285,111 @@ def r_prep(images: np.ndarray, labels: np.ndarray = None, *,
         ##Sleep block appended ONCE after every observation, at sleep_rate.
         steps_sleep = int(round(sleep / dt_ms))
         stream.append(_draw(np.full(D, sleep_rate * dt_ms / 1000.0), steps_sleep))
-    return np.concatenate(stream, axis=0), (None if labels is None else np.asarray(labels))
+    return np.concatenate(stream, axis=0), (None if labels is None else np.asarray(labels))
+
+
+   ######################################################################################
+##########################   5. DoG + intensity-to-latency (Mozafari et al. 2019)   ######
+   ######################################################################################
+
+def dog_kernel(size: int, sigma1: float, sigma2: float) -> np.ndarray:
+    """(size, size) difference of Gaussians, zero mean, max 1 (the authors' SpykeTorch utils.DoGKernel)."""
+    w = size // 2
+    x, y = np.mgrid[-w:w + 1, -w:w + 1]
+    r2 = x * x + y * y
+    dog = (np.exp(-0.5 * r2 / sigma1 ** 2) / sigma1 ** 2 - np.exp(-0.5 * r2 / sigma2 ** 2) / sigma2 ** 2) / (2 * np.pi)
+    dog -= dog.mean()
+    return dog / dog.max()
+
+
+def dog_latency_prep(image: np.ndarray, kernels, *, threshold: float = 50.0, norm_radius: int = 8, n_bins: int = 15, pad: int = 2) -> np.ndarray:
+    """
+    ONE image (H, W), 0..255 -> the spike BIN of every input, (H + 2 pad, W + 2 pad, n_kernels) int16, -1 = never spikes.
+    Mozafari et al. 2019 Sec. 2, as the authors' SpykeTorch S1C1Transform: each DoG kernel correlated with the image ('same' size, zero padding),
+    values below `threshold` -> 0, local normalisation (each value / the mean of its (2 norm_radius + 1)^2 window, zero padded, per kernel),
+    intensity -> latency (utils.Intensity2Latency): all values sorted descending fill n_bins bins of nonzero // n_bins values each, strongest
+    first; the remainder (fewer than n_bins values) never spikes. pad = the silent border the first layer sees (the authors' sf.pad(input, 2)).
+    """
+    img = np.asarray(image, dtype=np.float64)
+    maps = []
+    for k in kernels:
+        h = k.shape[0] // 2
+        win = np.lib.stride_tricks.sliding_window_view(np.pad(img, h), k.shape)
+        maps.append(np.einsum("ijkl,kl->ij", win, k))
+    out = np.stack(maps)                                                   ##(C, H, W)
+    out[out < threshold] = 0.0
+    w = 2 * int(norm_radius) + 1
+    rows = np.lib.stride_tricks.sliding_window_view(np.pad(out, ((0, 0), (w // 2, w // 2), (w // 2, w // 2))), w, axis=1).sum(-1)
+    means = np.lib.stride_tricks.sliding_window_view(rows, w, axis=2).sum(-1) / (w * w)          ##the window mean in two 1-D passes (same values, 2x faster)
+    out = out / (means + 1e-12)
+    flat = out.ravel()
+    nonzero = int(np.count_nonzero(flat))
+    size = max(nonzero // int(n_bins), 1)
+    top = np.argsort(-flat, kind="stable")[:min(int(n_bins) * size, nonzero)]
+    bins = np.full(flat.size, -1, dtype=np.int16)
+    bins[top] = np.arange(top.size) // size
+    bins = bins.reshape(out.shape).transpose(1, 2, 0)                     ##(H, W, C): channels innermost, as a grid (H, W, C) in C order
+    return np.pad(bins, ((pad, pad), (pad, pad), (0, 0)), constant_values=-1)
+
+
+MOZAFARI_DOG = ((3, 3 / 9, 6 / 9), (3, 6 / 9, 3 / 9), (7, 7 / 9, 14 / 9), (7, 14 / 9, 7 / 9), (13, 13 / 9, 26 / 9), (13, 26 / 9, 13 / 9))
+##(size, sigma1, sigma2) of the six DoG kernels, MozafariDeep.py: on- and off-centre at three scales
+
+
+class DoGLatencyDataset:
+    """images (n, H, W), 0..255 -> sample i = frames (n_bins + flush, (H + 2 pad) (W + 2 pad) n_kernels) bool: each input spikes ONCE, at the step
+    of its latency bin (dog_latency_prep); the flush steps are silent (the last bin's spikes need one step per layer to reach the top).
+    Encoded WHEN ASKED, nothing stored, the same index always gives the same frames. A ModelInput source: ModelInput(DoGLatencyDataset(x), y).
+    Inputs are ordered as the grid (H + 2 pad, W + 2 pad, n_kernels) in C order: the network's input group needs that grid."""
+
+    def __init__(self, images, *, dog=MOZAFARI_DOG, threshold: float = 50.0, norm_radius: int = 8, n_bins: int = 15, pad: int = 2, flush: int = 2):
+        self.images = np.asarray(images)
+        self.kernels = [dog_kernel(*k) for k in dog]
+        self.kw = dict(threshold=threshold, norm_radius=norm_radius, n_bins=n_bins, pad=pad)
+        self.T = int(n_bins) + int(flush)
+        self.grid = (self.images.shape[1] + 2 * pad, self.images.shape[2] + 2 * pad, len(self.kernels))
+
+    def __len__(self) -> int:
+        return len(self.images)
+
+    def __getitem__(self, i) -> np.ndarray:
+        bins = dog_latency_prep(self.images[int(i)], self.kernels, **self.kw).ravel()
+        on = np.flatnonzero(bins >= 0)
+        frames = np.zeros((self.T, bins.size), dtype=np.bool_)
+        frames[bins[on], on] = True
+        return frames
+
+
+   ######################################################################################
+##########################   6. DVS Gesture event frames (Amir et al. 2017)   #############
+   ######################################################################################
+
+DVSGESTURE_SENSOR = (128, 128, 2)        ##tonic.datasets.DVSGesture.sensor_size (x, y, polarity); 11 classes
+
+
+def dvsgesture_frames(train: bool, *, bin_ms: float = 10.0, t_max_ms: float = 1500.0, spatial_factor: float = 0.25, save_to=None):
+    """DVS Gesture via tonic -> ModelInput, sample i = (frames (T, 2, H, W) bool, label int).   ##MISSING-RESOLUTIONS 6
+    spatial_factor 0.25: 128 x 128 -> 32 x 32 pixels (2048 inputs with both polarities; tonic.Downsample floors x and y). Events are binned at bin_ms of
+    REAL time (1+ events -> one spike) and cut or zero-padded to T = t_max_ms / bin_ms frames; the network runs one frame per step of SimulationCfg.dt.
+    A recording is about 6 s long, so t_max_ms keeps its first part. bin_ms, t_max_ms and spatial_factor are choices, not from a paper.
+    Lazy: tonic reads and frames a sample when it is asked for. Files in save_to/DVSGesture/ (default RAW_DIR; download_datasets.py fetches them)."""
+    import tonic
+    from tonic_helpers import ClampBinary, FixedLength
+    from modelinput import ModelInput
+    from paths import RAW_DIR
+    T = int(round(t_max_ms / bin_ms))
+    size = (int(DVSGESTURE_SENSOR[0] * spatial_factor), int(DVSGESTURE_SENSOR[1] * spatial_factor), DVSGESTURE_SENSOR[2])
+    frame = tonic.transforms.Compose([tonic.transforms.Downsample(spatial_factor=spatial_factor),
+                                      tonic.transforms.ToFrame(sensor_size=size, time_window=int(bin_ms * US_TO_MS)),
+                                      ClampBinary(dtype=np.bool_), FixedLength(T)])      ##events -> smaller grid -> frames at bin_ms -> 1+ events = one spike -> cut / pad to T
+    ds = tonic.datasets.DVSGesture(save_to=str(save_to or RAW_DIR), train=train, transform=frame)
+    data = ModelInput.from_tonic(ds, axis_labels="TPHW")
+    logger.info("dvsgesture_frames: %s %d samples, T=%d frames of %.1f ms real time, %s pixels, n_input=%d", "train" if train else "test", len(data), T, bin_ms,
+                size[:2], data.n_input)
+    return data
+
+
+def dvsgesture_dataset(*, bin_ms: float = 10.0, t_max_ms: float = 1500.0, spatial_factor: float = 0.25):
+    """(train, test) = the official DVS Gesture split as two ModelInputs (what a main() or a parallel.Job(load=dvsgesture_dataset, load_kw={...}) loads)."""
+    kw = dict(bin_ms=bin_ms, t_max_ms=t_max_ms, spatial_factor=spatial_factor)
+    return dvsgesture_frames(True, **kw), dvsgesture_frames(False, **kw)

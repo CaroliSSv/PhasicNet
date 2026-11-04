@@ -1,0 +1,239 @@
+#microcol_hlsp_network - NETWORK FILE of variant A (builder.load_specs; written by builder.save_specs, a re-save drops these comments).
+# Three layers of microcolumns. A grid is (column x, column y, slot): the first two coordinates name the column, every column has the same slots.
+# Each layer = one exc + one inh group on the same column grid, 80 / 20 as HLSP's liquid:
+#   input (28, 28)                one input per pixel
+#   L1    (7, 7) x (32 + 8)       49 columns, each reads its own 4 x 4 pixel patch (rf 4, stride 4)
+#   L2    (3, 3) x (64 + 16)      9 columns, each reads 3 x 3 L1 columns, neighbours overlap (rf 3, stride 2)
+#   L3    (1, 1) x (100 + 25)     one column reading all of L2 (rf 3, stride 3)
+#KERNEL "column" (p_connection): {kernel: column, p, rf, stride, dims, pattern}. Along each of the first `dims` (default 2) grid axes, post column
+# x reads pre columns x*stride .. x*stride + rf - 1; without rf / stride a neuron reads its OWN column (within-column wiring). Every allowed pair is
+# drawn with probability p. pattern (optional, within a column): one_to_one = the same slot only, all_but_self = every other slot.
+#VALUES (HLSP = Luo et al. 2026, Table 2; INFERRED = chosen here, HLSP has one liquid and no layers):
+#   in_L1e / in_L1i   fixed, random sign per edge, never learned (HLSP). W_in 2.0 INFERRED: calibrated so L1 fires ~7 Hz (HLSP Fig. 2: ~7 Hz);
+#                     p 1 inside the patch INFERRED (HLSP's p_in 0.15 would give a column ~2 of its 16 pixels)
+#   L*_ee/ei/ie/ii    within a column: p 0.1, start at 0, E-/I-STDP within [0, 3] / [-3, 0] (HLSP)
+#   L1_L2*, L2_L3e    feed-forward exc -> next layer, p 0.5, start uniform (0, 3) = (0, W_max) INFERRED: calibrated, L2 ~6 Hz, L3 ~11 Hz
+#   L3_ei / L3_ie     fixed winner-take-all inside the top column (+-3, p 1), never learned: INFERRED
+spec_name: microcol_hlsp_spec
+spec_ID: acb22825c7f25148
+neuronspecs:
+    input:
+        neur_type: input
+        n: 784
+        input: true
+        inh: false
+        grid:
+        - 28
+        - 28
+        grid_share: null
+    L1_exc:
+        neur_type: L1_exc
+        n: 1568
+        input: false
+        inh: false
+        grid:
+        - 7
+        - 7
+        - 32
+        grid_share: null
+    L1_inh:
+        neur_type: L1_inh
+        n: 392
+        input: false
+        inh: true
+        grid:
+        - 7
+        - 7
+        - 8
+        grid_share: null
+    L2_exc:
+        neur_type: L2_exc
+        n: 576
+        input: false
+        inh: false
+        grid:
+        - 3
+        - 3
+        - 64
+        grid_share: null
+    L2_inh:
+        neur_type: L2_inh
+        n: 144
+        input: false
+        inh: true
+        grid:
+        - 3
+        - 3
+        - 16
+        grid_share: null
+    L3_exc:
+        neur_type: L3_exc
+        n: 100
+        input: false
+        inh: false
+        grid:
+        - 1
+        - 1
+        - 100
+        grid_share: null
+    L3_inh:
+        neur_type: L3_inh
+        n: 25
+        input: false
+        inh: true
+        grid:
+        - 1
+        - 1
+        - 25
+        grid_share: null
+synapsespecs:
+    in_L1e:
+        syn_type: in_L1e
+        pre_neuron: input
+        post_neuron: L1_exc
+        w0:
+            values:
+            - -2.0
+            - 2.0
+        p_connection:
+            kernel: column
+            p: 1.0
+            rf: 4
+            stride: 4
+    in_L1i:
+        syn_type: in_L1i
+        pre_neuron: input
+        post_neuron: L1_inh
+        w0:
+            values:
+            - -2.0
+            - 2.0
+        p_connection:
+            kernel: column
+            p: 1.0
+            rf: 4
+            stride: 4
+    L1_ee:
+        syn_type: L1_ee
+        pre_neuron: L1_exc
+        post_neuron: L1_exc
+        w0: 0.0
+        p_connection:
+            kernel: column
+            p: 0.1
+    L1_ei:
+        syn_type: L1_ei
+        pre_neuron: L1_exc
+        post_neuron: L1_inh
+        w0: 0.0
+        p_connection:
+            kernel: column
+            p: 0.1
+    L1_ie:
+        syn_type: L1_ie
+        pre_neuron: L1_inh
+        post_neuron: L1_exc
+        w0: 0.0
+        p_connection:
+            kernel: column
+            p: 0.1
+    L1_ii:
+        syn_type: L1_ii
+        pre_neuron: L1_inh
+        post_neuron: L1_inh
+        w0: 0.0
+        p_connection:
+            kernel: column
+            p: 0.1
+    L1_L2e:
+        syn_type: L1_L2e
+        pre_neuron: L1_exc
+        post_neuron: L2_exc
+        w0:
+        - 0.0
+        - 3.0
+        p_connection:
+            kernel: column
+            p: 0.5
+            rf: 3
+            stride: 2
+    L1_L2i:
+        syn_type: L1_L2i
+        pre_neuron: L1_exc
+        post_neuron: L2_inh
+        w0:
+        - 0.0
+        - 3.0
+        p_connection:
+            kernel: column
+            p: 0.5
+            rf: 3
+            stride: 2
+    L2_ee:
+        syn_type: L2_ee
+        pre_neuron: L2_exc
+        post_neuron: L2_exc
+        w0: 0.0
+        p_connection:
+            kernel: column
+            p: 0.1
+    L2_ei:
+        syn_type: L2_ei
+        pre_neuron: L2_exc
+        post_neuron: L2_inh
+        w0: 0.0
+        p_connection:
+            kernel: column
+            p: 0.1
+    L2_ie:
+        syn_type: L2_ie
+        pre_neuron: L2_inh
+        post_neuron: L2_exc
+        w0: 0.0
+        p_connection:
+            kernel: column
+            p: 0.1
+    L2_ii:
+        syn_type: L2_ii
+        pre_neuron: L2_inh
+        post_neuron: L2_inh
+        w0: 0.0
+        p_connection:
+            kernel: column
+            p: 0.1
+    L2_L3e:
+        syn_type: L2_L3e
+        pre_neuron: L2_exc
+        post_neuron: L3_exc
+        w0:
+        - 0.0
+        - 3.0
+        p_connection:
+            kernel: column
+            p: 0.5
+            rf: 3
+            stride: 3
+    L3_ee:
+        syn_type: L3_ee
+        pre_neuron: L3_exc
+        post_neuron: L3_exc
+        w0: 0.0
+        p_connection:
+            kernel: column
+            p: 0.1
+    L3_ei:
+        syn_type: L3_ei
+        pre_neuron: L3_exc
+        post_neuron: L3_inh
+        w0: 3.0
+        p_connection:
+            kernel: column
+            p: 1.0
+    L3_ie:
+        syn_type: L3_ie
+        pre_neuron: L3_inh
+        post_neuron: L3_exc
+        w0: -3.0
+        p_connection:
+            kernel: column
+            p: 1.0

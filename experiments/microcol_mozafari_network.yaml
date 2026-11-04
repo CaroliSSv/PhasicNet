@@ -1,0 +1,92 @@
+#microcol_mozafari_network - NETWORK FILE of variant B (builder.load_specs; written by builder.save_specs, a re-save drops these comments).
+# Mozafari et al. 2019 (Pattern Recognition 94:87) as microcolumns. A grid is (column x, column y, slot). Exc only: the paper's inhibition is a
+# learning-time competition, done by the threshold module (GroupThreshold), not by synapses.
+#   input (32, 32, 6)       the 28 x 28 image + 2 silent pixels each side, x 6 DoG channels (preprocessing.DoGLatencyDataset)
+#   L1    (14, 14) x 30     each column reads a 5 x 5 x 6 input patch (rf 5, stride 2): fan-in 150 = the paper's S1 neuron (5 x 5 x 6)
+#   L2    (4, 4) x 250      each column reads 3 x 3 L1 columns x 30 (rf 3, stride 3): fan-in 270 = the paper's S2 neuron (3 x 3 x 30)
+#   L3    (1, 1) x 200      the decision layer reads all of L2 (rf 4, stride 4), 20 neurons per class
+#MAPPING (INFERRED, the paper is convolutional): no weight sharing, every column learns its own features; the fan-in of every neuron equals the
+# paper's, so its thresholds keep their meaning; the pooling layers (2 x 2, 3 x 3) become the column strides. L2 covers L1 columns 0-11 of 14:
+# image rows / columns 25-27 (blank in MNIST's centred 20 x 20 digits) do not reach L2.
+#WEIGHTS: start uniform (0.7134, 0.8866) = the paper's mean 0.8, sd 0.05 (it draws N(0.8, 0.05)); learned within [0, 1] (L1, L2) / [0.2, 0.8] (L3).
+#KERNEL "column": see microcol_hlsp_network.yaml.
+spec_name: microcol_mozafari_spec
+spec_ID: e26d9f9c4d9259db
+neuronspecs:
+    input:
+        neur_type: input
+        n: 6144
+        input: true
+        inh: false
+        grid:
+        - 32
+        - 32
+        - 6
+        grid_share: null
+    L1_exc:
+        neur_type: L1_exc
+        n: 5880
+        input: false
+        inh: false
+        grid:
+        - 14
+        - 14
+        - 30
+        grid_share: null
+    L2_exc:
+        neur_type: L2_exc
+        n: 4000
+        input: false
+        inh: false
+        grid:
+        - 4
+        - 4
+        - 250
+        grid_share: null
+    L3_exc:
+        neur_type: L3_exc
+        n: 200
+        input: false
+        inh: false
+        grid:
+        - 1
+        - 1
+        - 200
+        grid_share: null
+synapsespecs:
+    in_L1:
+        syn_type: in_L1
+        pre_neuron: input
+        post_neuron: L1_exc
+        w0:
+        - 0.713397
+        - 0.886603
+        p_connection:
+            kernel: column
+            p: 1.0
+            rf: 5
+            stride: 2
+    L1_L2:
+        syn_type: L1_L2
+        pre_neuron: L1_exc
+        post_neuron: L2_exc
+        w0:
+        - 0.713397
+        - 0.886603
+        p_connection:
+            kernel: column
+            p: 1.0
+            rf: 3
+            stride: 3
+    L2_L3:
+        syn_type: L2_L3
+        pre_neuron: L2_exc
+        post_neuron: L3_exc
+        w0:
+        - 0.713397
+        - 0.886603
+        p_connection:
+            kernel: column
+            p: 1.0
+            rf: 4
+            stride: 4

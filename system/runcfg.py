@@ -6,8 +6,8 @@ import numpy as np
 from numpy.random import SeedSequence, Generator, PCG64
 from hashlib import blake2b
 import logging
-from utils import _capitalize_strip_name     
-from dynamicscfg import _load_section_cfg, _NamesItself      
+from utils import _capitalize_strip_name, _read_json_yaml, _filepath     
+from dynamicscfg import _load_section_cfg, _NamesItself, DynamicsCfg      
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +180,11 @@ class RunCfg:
 
 
     @classmethod
+    def load_file(cls, file, fmt=None) -> "RunCfg":
+        """ONE saved runcfg file (json / yaml) -> RunCfg. The protocol cfg subclass's module must be imported first.   ##MISSING-RESOLUTIONS 1"""
+        return cls.load(_read_json_yaml(file=_filepath(file), fmt=fmt))
+
+    @classmethod
     def load(cls, raw_data: Dict) -> "RunCfg":
 
         nested = {"history": HistoryCfg, "scorer": ScorerCfg, "checkpoint": CheckpointCfg, "data": DataCfg, "protocol": ProtocolCfg}  
@@ -213,4 +218,46 @@ class RunCfg:
         return cls(**kwargs)
     
     def _canonicalize(self):
-        return asdict(self)
+        return asdict(self)
+
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentCfg:
+    """
+    ONE experiment's settings in one file: the physics (DynamicsCfg) + the run (RunCfg). The network is the second file (NetSpec, builder.load_specs).
+    IO: PhasicNet.load_experiment / save_experiment. Subclass cfgs are found by cfg_type / protocol_type, so the modules defining them must be imported first.
+
+    Args:
+        dynamics = DynamicsCfg (simulation, synapse, integrator, threshold, plasticity, noise, phases)
+        run = RunCfg (history, scorer, checkpoint, data, protocol)
+        cfg_name = the name saved with it (PhasicNet.cfg_name)
+    """
+    dynamics: DynamicsCfg
+    run: RunCfg = field(default_factory=RunCfg)
+    cfg_name: Optional[str] = None
+
+    @classmethod
+    def load(cls, raw_data: Dict) -> "ExperimentCfg":
+        return cls(dynamics=DynamicsCfg.load(raw_data["dynamics"]), run=RunCfg.load(raw_data.get("run") or {}), cfg_name=raw_data.get("cfg_name"))
+
+    @classmethod
+    def load_file(cls, file, fmt=None) -> "ExperimentCfg":
+        """ONE experiment file (json / yaml) -> ExperimentCfg. A bare file name is looked up in exports/ (as PhasicNet.load_cfg)."""
+        return cls.load(_read_json_yaml(file=_filepath(file), fmt=fmt))
+
+    def override(self, values: Dict) -> "ExperimentCfg":
+        """{"dynamics.plasticity.A_ltp": 0.1, "run.data.n_train": 2000} -> a copy with these fields replaced (one dotted path per field). For searches."""
+        out = self
+        for path, value in (values or {}).items():
+            out = _replace_path(out, path.split("."), value)
+        return out
+
+    def _canonicalize(self):
+        return {"cfg_name": self.cfg_name, "dynamics": self.dynamics._canonicalize(), "run": self.run._canonicalize()}
+
+
+def _replace_path(obj, keys: list, value):
+    if len(keys) == 1:
+        return replace(obj, **{keys[0]: value})
+    return replace(obj, **{keys[0]: _replace_path(getattr(obj, keys[0]), keys[1:], value)})

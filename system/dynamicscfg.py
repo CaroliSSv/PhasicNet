@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Literal, Tuple
 import logging
 import sys 
 import numpy as np
-from utils import _capitalize_strip_name
+from utils import _capitalize_strip_name, _read_json_yaml, _filepath
 
 
 logger = logging.getLogger(__name__)
@@ -238,6 +238,11 @@ class DynamicsCfg:
     plasticity: Optional[PlasticityCfg] = None
     noise: Optional[NoiseCfg] = None
     phases: Tuple[PhaseCfg, ...] = ()
+
+    @classmethod
+    def load_file(cls, file, fmt=None) -> DynamicsCfg:
+        """ONE saved cfg file (json / yaml) -> DynamicsCfg. A bare file name is looked up in exports/ (as PhasicNet.load_cfg).   ##MISSING-RESOLUTIONS 1"""
+        return cls.load(_read_json_yaml(file=_filepath(file), fmt=fmt))
 
     @classmethod
     def load(cls, raw_data: Dict) -> DynamicsCfg:

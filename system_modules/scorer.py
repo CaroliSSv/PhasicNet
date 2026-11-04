@@ -79,7 +79,9 @@ def accuracy(labels: np.ndarray, predicted: np.ndarray) -> float:
 def confusion_matrix(labels: np.ndarray, predicted: np.ndarray, n_classes: int = 10) -> np.ndarray:
     """(n_classes, n_classes) counts; row = true class, column = predicted class."""
     cm = np.zeros((n_classes, n_classes), dtype=np.int64)
-    np.add.at(cm, (np.asarray(labels), np.asarray(predicted)), 1)
+    labels, predicted = np.asarray(labels), np.asarray(predicted)
+    keep = predicted >= 0                                   ##MISSING-RESOLUTIONS 5: abstain (-1) is no class; it used to be counted as the LAST class
+    np.add.at(cm, (labels[keep], predicted[keep]), 1)
     return cm
 
 
@@ -189,6 +191,104 @@ def proportion_weighting(resp_assign: np.ndarray, y_assign: np.ndarray, resp_tes
     pred = np.argmax(scores, axis=1)
     pred[scores.sum(axis=1) == 0] = -1                                                  ##silent sample -> abstain
     return assign, proportions, pred
+
+
+   ##########################################################
+        ###########  Clustering (readout-free) ##########
+
+##  cluster the SAMPLES without labels (k-means), then compare the clusters with the labels: ARI (Hubert & Arabie 1985), AMI (Vinh, Epps & Bailey 2010,
+##  JMLR 11:2837; arithmetic normalisation, sklearn's default). Labels never shape the clusters. NOTE checked against sklearn (not a dependency here)
+
+def kmeans(X: np.ndarray, k: int, rng: np.random.Generator, *, n_init: int = 10, iters: int = 100) -> np.ndarray:
+    """(n, d) -> (n,) cluster index. Lloyd's algorithm from k-means++ seeds; the best of n_init restarts (lowest within-cluster sum of squares).
+    An empty cluster is re-seeded at the point farthest from its centre."""
+    X = np.asarray(X, dtype=np.float32)
+    n = X.shape[0]
+    k = int(min(k, n))
+    sq = np.einsum("ij,ij->i", X, X).astype(np.float64)                 ##float64: rng.choice(p=d2 / tot) needs sum(p) == 1 to 1e-8
+    best, best_inertia = None, np.inf
+    for _ in range(int(n_init)):
+        C = np.empty((k, X.shape[1]), dtype=np.float32)
+        C[0] = X[rng.integers(n)]
+        d2 = np.maximum(sq - 2.0 * X @ C[0] + C[0] @ C[0], 0.0)
+        for c in range(1, k):                                               ##k-means++: next seed with probability ~ squared distance
+            tot = float(d2.sum())
+            C[c] = X[rng.choice(n, p=d2 / tot)] if tot > 0 else X[rng.integers(n)]
+            d2 = np.minimum(d2, np.maximum(sq - 2.0 * X @ C[c] + C[c] @ C[c], 0.0))
+        labels = None
+        for _ in range(int(iters)):
+            D = sq[:, None] - 2.0 * (X @ C.T) + np.einsum("ij,ij->i", C, C)[None, :]
+            new = D.argmin(axis=1)
+            if labels is not None and np.array_equal(new, labels):
+                break
+            labels = new
+            for c in range(k):
+                m = labels == c
+                C[c] = X[m].mean(axis=0) if m.any() else X[D[np.arange(n), labels].argmax()]
+        inertia = float(np.maximum(D[np.arange(n), labels], 0.0).sum())
+        if inertia < best_inertia:
+            best, best_inertia = labels.copy(), inertia
+    return best
+
+
+def _contingency(labels: np.ndarray, clusters: np.ndarray) -> np.ndarray:
+    _, li = np.unique(np.asarray(labels), return_inverse=True)
+    _, ci = np.unique(np.asarray(clusters), return_inverse=True)
+    table = np.zeros((li.max() + 1, ci.max() + 1), dtype=np.int64)
+    np.add.at(table, (li, ci), 1)
+    return table
+
+
+def adjusted_rand_index(labels: np.ndarray, clusters: np.ndarray) -> float:
+    """ARI: pair agreement between two partitions, 0 = chance, 1 = identical (Hubert & Arabie 1985)."""
+    t = _contingency(labels, clusters)
+    pairs = lambda x: float((x * (x - 1) // 2).sum())
+    n = int(t.sum())
+    s_ij, s_a, s_b = pairs(t), pairs(t.sum(1)), pairs(t.sum(0))
+    expected = s_a * s_b / (n * (n - 1) / 2) if n > 1 else 0.0
+    denom = 0.5 * (s_a + s_b) - expected
+    return 1.0 if denom == 0 else (s_ij - expected) / denom
+
+
+def adjusted_mutual_info(labels: np.ndarray, clusters: np.ndarray) -> float:
+    """AMI = (MI - E[MI]) / (mean(H_labels, H_clusters) - E[MI]); E[MI] under the permutation model (Vinh et al. 2010, Eq. 24a). 0 = chance, 1 = identical."""
+    from math import lgamma
+    t = _contingency(labels, clusters)
+    n = int(t.sum())
+    a, b = t.sum(1), t.sum(0)
+    if (a.size == b.size == 1) or (a.size == b.size == n):
+        return 1.0
+    nz = t > 0
+    mi = float((t[nz] / n * np.log(n * t[nz] / np.outer(a, b)[nz])).sum())
+    h = lambda x: float(-(x / n * np.log(x / n)).sum())
+    lg = np.array([lgamma(i + 1) for i in range(n + 1)])                    ##log(i!)
+    emi = 0.0
+    for ai in a:
+        for bj in b:
+            nij = np.arange(max(1, ai + bj - n), min(ai, bj) + 1)
+            if nij.size == 0:
+                continue
+            log_p = (lg[ai] + lg[bj] + lg[n - ai] + lg[n - bj] - lg[n] - lg[nij] - lg[ai - nij] - lg[bj - nij] - lg[n - ai - bj + nij])
+            emi += float((nij / n * np.log(n * nij / (ai * bj)) * np.exp(log_p)).sum())
+    denom = 0.5 * (h(a) + h(b)) - emi
+    denom = min(denom, -np.finfo(float).eps) if denom < 0 else max(denom, np.finfo(float).eps)
+    return (mi - emi) / denom
+
+
+def cluster_scores(responses: np.ndarray, labels: np.ndarray, *, rng: np.random.Generator, k: int | None = None, n_init: int = 10,
+                   normalize: bool = True) -> Dict[str, float]:
+    """Readout-free score of ONE response set: k-means on the samples (k = number of classes by default), clusters vs labels.
+    normalize: each sample vector / its L2 norm, so clusters follow the PATTERN, not the total activity (MNIST ink confound); silent samples stay 0.
+    Returns {"ari", "ami", "k", "silent_frac"}."""
+    X = np.asarray(responses, dtype=np.float32)
+    labels = np.asarray(labels)
+    norm = np.sqrt(np.einsum("ij,ij->i", X, X))
+    if normalize:
+        X = X / np.where(norm > 0, norm, 1.0)[:, None]
+    k = int(np.unique(labels).size if k is None else k)
+    clusters = kmeans(X, k, rng, n_init=n_init)
+    return {"ari": adjusted_rand_index(labels, clusters), "ami": adjusted_mutual_info(labels, clusters), "k": k,
+            "silent_frac": float((norm == 0).mean())}
 
 
    ######################################################################################
