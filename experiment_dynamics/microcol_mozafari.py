@@ -9,10 +9,10 @@
 #   IFIntegrator   non-leaky integrate-and-fire, dV = r I (paper Eq. 1)
 #   GroupThreshold one threshold per layer (Table 1: L1 15, L2 10; the decision layer None = never fires, its potential is the output);
 #               at most ONE spike per neuron per sample (the authors' cumulative spike waves: a neuron's first spike is its only one)
-#               + the competition (sf.pointwise_inhibition): in mode "train" each COLUMN of every wta group fires once per sample, the earliest
-#               neuron, ties -> the highest potential; the column is then silent for the sample. Mode "eval": no competition.
-#               ##authors choice> mozafari: MozafariDeep.forward applies the inhibition to every layer's output in training mode, also to the
-#               frozen layers during R-STDP, and to none at test time (train != test)
+#               + the competition (sf.pointwise_inhibition): in mode "train" each COLUMN of a wta group whose input is plastic fires once per
+#               sample, the earliest neuron, ties -> the highest potential; the column is then silent for the sample. Frozen layers and mode
+#               "eval": no competition. ##authors choice> mozafari NOT followed here: the authors also inhibit the frozen layers, but their spikes
+#               keep counting for the rest of the sample and ours count once, so L1 starved L2 (L2 never fired in training, R-STDP 0% hits)
 #   MozafariSTDP   first-spike STDP (snn.STDP): dW = (a+ if the pre spike ARRIVED by then, else a-) W (1 - W), on the k WINNERS of a sample only
 #               (sf.get_k_winners, cfg kwta): the earliest spikes of the layer, ties -> highest potential, k = 5 / 8 per sample and a winner
 #               blocks the columns within radius 3 / 1 (L1 / L2). ##authors choice> mozafari (MozafariDeep.py k1 r1 k2 r2)
@@ -89,8 +89,8 @@ class GroupThresholdCfg(ThresholdCfg):
 
 
 class GroupThreshold(Threshold):
-    """Spike iff V >= the group's threshold (and, one_spike, the neuron has not fired this sample). In mode "train", in every wta group (frozen or
-    not, ##authors choice> mozafari): per column only the earliest neuron fires (ties -> highest V) and the column stays silent for the rest of the
+    """Spike iff V >= the group's threshold (and, one_spike, the neuron has not fired this sample). In mode "train", in a wta group whose incoming
+    projections are not all frozen: per column only the earliest neuron fires (ties -> highest V) and the column stays silent for the rest of the
     sample (Won, transient). Mode "eval": no competition. The column of a neuron = its first wta_dims grid coordinates (net.positions)."""
     writes = ("rec_spikes",)
     requires = ("Since",)
@@ -106,7 +106,7 @@ class GroupThreshold(Threshold):
         self.wta_dims = int(cfg.wta_dims)
         self.Won = None             ##(columns of every wta group,) bool: the column has fired this sample
         self._V_th = None
-        self._wta = []              ##per wta group: (rows, column id per neuron, offset into Won)
+        self._wta = []              ##per wta group: (rows, column id per neuron, offset into Won, incoming synapse groups)
 
     def configure_for_network(self, net) -> None:
         self._V_th = np.full(net.n_post, self.v_th, dtype=np.float32)
@@ -116,7 +116,7 @@ class GroupThreshold(Threshold):
         for g in self.wta_groups:
             pos = np.asarray(net.positions[g])[:, :self.wta_dims].astype(np.int64)
             col = np.ravel_multi_index(pos.T, tuple(pos.max(axis=0) + 1))
-            self._wta.append((net.neuronrows[g], col, offset))
+            self._wta.append((net.neuronrows[g], col, offset, tuple(s for s, spec in net.synapsespecs.items() if spec.post_neuron == g)))
             offset += int(col.max()) + 1
         self.Won = np.zeros(offset, dtype=bool)
 
@@ -127,7 +127,10 @@ class GroupThreshold(Threshold):
             upd.rec_spikes &= neur.Since >= NEVER_SPIKED
         if ctx.sim.mode != "train" or not self._wta:
             return
-        for rows, col, off in self._wta:                                       ##every wta group, frozen or not (##authors choice> mozafari)
+        frozen = ctx.syn.frozen or {}
+        for rows, col, off, incoming in self._wta:
+            if "all" in frozen or all(s in frozen for s in incoming):          ##frozen layers do not compete (header)
+                continue
             cand = np.flatnonzero(upd.rec_spikes[rows])
             if not cand.size:
                 continue
