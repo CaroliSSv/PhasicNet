@@ -130,7 +130,7 @@ def test_spatial_spec_round_trip_and_grid_fields_canonical():
     bb.set_neurons(("input", 32, True), ("exc", 6), ("inh", 6, False, True)); bb.set_synapses(("in_exc", "input", "exc"), ("exc_inh", "exc", "inh"), ("inh_exc", "inh", "exc"))
     bb.set_connectivity(in_exc="all_to_all", exc_inh="one_to_one", inh_exc="all_but_self"); bb.set_weights({"in_exc": (0.003, 0.303), "exc_inh": 10.4, "inh_exc": -17.0})
     net = bb.realize(network_name="x", post_offset=True, save=False)
-    assert net.spec_id == "b12d5680f9f669f0" and net.network_id == "7c7bc0fd82d5eaca9ee5fb7e4dc8fc08"
+    assert net.spec_id == "1995c12a1ab3b2e3" and net.network_id == "1b80473741bd8b9941ea41f3e9cb4e1c"
     assert NeuronSpec("a", 3).grid is None
 
 
@@ -434,7 +434,7 @@ def test_grid_fields_are_canonical_like_every_other_field():
     import builder as B
     from network import NeuronSpec, _canonicalize_netspecs
     canon = _canonicalize_netspecs({"a": NeuronSpec("a", 3, True)}, {})
-    assert canon["neuronspecs"]["a"] == {"neur_type": "a", "n": 3, "input": True, "inh": False, "grid": None, "grid_share": None}
+    assert canon["neuronspecs"]["a"] == {"neur_type": "a", "n": 3, "input": True, "inh": False, "grid": None, "grid_share": None, "n_columns": None}
     assert not hasattr(N, "_canon_neuronspec") and not hasattr(N, "_SPATIAL_FIELDS")
     assert B.DISTANCE_KERNELS == ("gaussian", "column") and not hasattr(B, "KERNELS")
     with pytest.raises(ValueError, match="Known kernels"):

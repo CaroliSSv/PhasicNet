@@ -300,13 +300,13 @@ def test_reward_punishment_and_the_decision_bound():
     assert syn.W[dec].max() <= np.float32(0.8) and syn.W[~dec].max() > 0.9
     frames = np.zeros((T, 128), dtype=bool)
     xy = np.indices((8, 8, 2)).reshape(3, -1)
-    frames[0, (xy[0] < 4) & (xy[1] < 4)] = True                 ##one quadrant: only L2 column (0, 0) fires, and in mode "train" only ONE of its 4 neurons
-    run.reset_transient()                                       ##(the competition also on the frozen L2, ##authors choice> mozafari): 1 of L3's 16 inputs arrives
+    frames[0, (xy[0] < 4) & (xy[1] < 4)] = True                 ##one quadrant: only L2 column (0, 0) fires, all 4 of its neurons
+    run.reset_transient()                                       ##(frozen L2: no competition): 4 of L3's 16 inputs arrive
     proto.present(frames)
     row = net.neuronrows["L3_exc"].start
     k = np.flatnonzero(syn.post == row)
     h = p.Arrived[syn.pre[k]]
-    assert h.sum() == 1 and k.size == 16
+    assert h.sum() == 4 and k.size == 16
     for reward, want in ((True, 0.5 * np.where(h > 0, 0.004, -0.003)), (False, 0.5 * np.where(h > 0, -0.004, 0.0005))):
         W0 = syn.W[k].astype(np.float64)
         assert p.apply_reward(run.ctx, row, reward, 0.5) == k.size
