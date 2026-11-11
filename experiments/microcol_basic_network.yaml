@@ -1,0 +1,153 @@
+#microcol_basic_network - NETWORK FILE of the back-to-basics experiment (builder.load_specs; written by builder.save_specs, a re-save drops these comments).
+# 4 columns (set_columns(4): every group, the input too, is split into 4 equal parts). 400 neurons per column, 80 % exc:
+#   input    2312 = 2 x 34 x 34 (N-MNIST: polarity, y, x)   578 per column = one quadrant of the sensor (ModelInput column_blocks (2, 2))
+#   L1       640 exc + 160 inh    160 + 40 per column
+#   L2       400 exc + 100 inh    100 + 25 per column
+#   L3       240 exc +  60 inh     60 + 15 per column; the decision layer: class of a neuron = its index % 10 (24 per class)
+#FORWARD (learned): in_L1, L1_L2 (STDP, inside a column), L2_L3 (R-STDP, crosses columns: the decision layer reads every column).
+#INHIBITION (fixed): L*_ei exc -> inh, L*_ie inh -> exc (negative weight) inside a layer; within a column in L1 and L2, across columns in L3.
+#FEEDBACK INHIBITION (fixed): fb_L2_L1 = L2 exc -> L1 inh (within a column), fb_L3_L2 = L3 exc -> L2 inh (across columns). Weight 0 = off.
+#No exc -> exc synapses inside a layer. cross_columns true = the group may connect across columns; every other group stays inside a column.
+spec_name: microcol_basic_spec
+spec_ID: 406edbeb1f4b0ef8
+neuronspecs:
+    input:
+        neur_type: input
+        n: 2312
+        input: true
+        inh: false
+        grid: null
+        grid_share: null
+        n_columns: 4
+    L1_exc:
+        neur_type: L1_exc
+        n: 640
+        input: false
+        inh: false
+        grid: null
+        grid_share: null
+        n_columns: 4
+    L1_inh:
+        neur_type: L1_inh
+        n: 160
+        input: false
+        inh: true
+        grid: null
+        grid_share: null
+        n_columns: 4
+    L2_exc:
+        neur_type: L2_exc
+        n: 400
+        input: false
+        inh: false
+        grid: null
+        grid_share: null
+        n_columns: 4
+    L2_inh:
+        neur_type: L2_inh
+        n: 100
+        input: false
+        inh: true
+        grid: null
+        grid_share: null
+        n_columns: 4
+    L3_exc:
+        neur_type: L3_exc
+        n: 240
+        input: false
+        inh: false
+        grid: null
+        grid_share: null
+        n_columns: 4
+    L3_inh:
+        neur_type: L3_inh
+        n: 60
+        input: false
+        inh: true
+        grid: null
+        grid_share: null
+        n_columns: 4
+synapsespecs:
+    in_L1:
+        syn_type: in_L1
+        pre_neuron: input
+        post_neuron: L1_exc
+        w0:
+        - 0.2
+        - 0.8
+        p_connection: 0.5
+        cross_columns: false
+    L1_ei:
+        syn_type: L1_ei
+        pre_neuron: L1_exc
+        post_neuron: L1_inh
+        w0: 1.0
+        p_connection: 0.5
+        cross_columns: false
+    L1_ie:
+        syn_type: L1_ie
+        pre_neuron: L1_inh
+        post_neuron: L1_exc
+        w0: -0.25
+        p_connection: 1.0
+        cross_columns: false
+    L1_L2:
+        syn_type: L1_L2
+        pre_neuron: L1_exc
+        post_neuron: L2_exc
+        w0:
+        - 0.2
+        - 0.8
+        p_connection: 0.5
+        cross_columns: false
+    L2_ei:
+        syn_type: L2_ei
+        pre_neuron: L2_exc
+        post_neuron: L2_inh
+        w0: 1.0
+        p_connection: 0.5
+        cross_columns: false
+    L2_ie:
+        syn_type: L2_ie
+        pre_neuron: L2_inh
+        post_neuron: L2_exc
+        w0: -0.25
+        p_connection: 1.0
+        cross_columns: false
+    fb_L2_L1:
+        syn_type: fb_L2_L1
+        pre_neuron: L2_exc
+        post_neuron: L1_inh
+        w0: 0.5
+        p_connection: 0.5
+        cross_columns: false
+    L2_L3:
+        syn_type: L2_L3
+        pre_neuron: L2_exc
+        post_neuron: L3_exc
+        w0:
+        - 0.2
+        - 0.8
+        p_connection: 0.5
+        cross_columns: true
+    L3_ei:
+        syn_type: L3_ei
+        pre_neuron: L3_exc
+        post_neuron: L3_inh
+        w0: 1.0
+        p_connection: 0.5
+        cross_columns: true
+    L3_ie:
+        syn_type: L3_ie
+        pre_neuron: L3_inh
+        post_neuron: L3_exc
+        w0: -0.25
+        p_connection: 1.0
+        cross_columns: true
+    fb_L3_L2:
+        syn_type: fb_L3_L2
+        pre_neuron: L3_exc
+        post_neuron: L2_inh
+        w0: 0.5
+        p_connection: 0.5
+        cross_columns: true

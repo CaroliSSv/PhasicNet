@@ -34,7 +34,7 @@ def cross_count(net, syn):
 
 def test_column_ids_split_each_group_roughly_equally():
     net = build()
-    assert net.columns == 7
+    assert net.n_columns == 7
     assert set(np.bincount(net.column_ids[net.neuronslices["input"]])) == {2, 3}         ##input is split too
     for g, size in (("L1_exc", 8), ("L1_inh", 2), ("L2_exc", 8)):
         assert np.array_equal(np.bincount(net.column_ids[net.neuronslices[g]]), [size] * 7)
@@ -54,7 +54,7 @@ def test_synapses_stay_in_their_column_unless_cross_columns():
 
 def test_no_columns_changes_nothing():
     a, b = build(columns=None), build(columns=1)
-    assert a.columns is None and (a.column_ids == -1).all()
+    assert a.n_columns is None and (a.column_ids == -1).all()
     assert a.network_id == b.network_id
     assert a.synapse_counts["n_L1_L2"] > 3 * build().synapse_counts["n_L1_L2"]           ##without columns: the whole group, about 7 x the edges
 
@@ -91,15 +91,15 @@ def test_set_columns_checks_at_realize():
 def test_set_columns_order_does_not_matter():
     first = real(small(lambda b: b.set_columns(7), NEURONS, SYNS))
     after = real(small(NEURONS, SYNS, lambda b: b.set_columns(7)))
-    assert first.network_id == after.network_id and first.neuronspecs["A"].columns == 7
+    assert first.network_id == after.network_id and first.neuronspecs["A"].n_columns == 7
 
 
 def test_set_columns_overwrite_and_reset():
     plain = real(small(NEURONS, SYNS))
     net = real(small(NEURONS, SYNS, lambda b: b.set_columns(7), lambda b: b.set_columns(2)))
-    assert net.columns == 2 and all(sp.columns == 2 for sp in net.neuronspecs.values())   ##later call overwrites, input included
+    assert net.n_columns == 2 and all(sp.n_columns == 2 for sp in net.neuronspecs.values())   ##later call overwrites, input included
     net = real(small(NEURONS, SYNS, lambda b: b.set_columns(7), lambda b: b.set_columns(None)))
-    assert net.columns is None and net.network_id == plain.network_id
+    assert net.n_columns is None and net.network_id == plain.network_id
     b = small(NEURONS, SYNS, lambda b: b.set_columns(7))
     real(b)
     b.set_columns(None)                                               ##same builder, realize again without columns

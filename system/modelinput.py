@@ -64,6 +64,9 @@ class ModelInput:
         - axis_labels: str - labels describing order using UNIQUE, SINGLE-letter labels. Gets recorded in attached meta.
             - (Ex. axis_labels = "THWC")
         - binary_check:bool = True - Ensure data is binary. Prevent silent transforms on runtime
+        - column_blocks: (rows, cols) = None - reorder the input neurons so that each of the rows x cols image blocks (bounded in x and y) is one
+            contiguous run of input neurons = one column of builder.set_columns(rows * cols). Needs H % rows == 0 and W % cols == 0.
+            - (Ex. frames (T, 2, 34, 34), column_blocks=(2, 2): 4 blocks of 2 x 17 x 17 = 578 input neurons each)
 
     INTERNAL storage pattern:
         - targets is None:
@@ -75,10 +78,10 @@ class ModelInput:
     """
 
     __slots__ = ("source", "targets", "meta", "axis_labels", "frame_shape",
-                 "sample_dtype", "binary_check", "index", "name", "_n_seen")
+                 "sample_dtype", "binary_check", "index", "name", "_n_seen", "column_blocks", "_order")
 
     def __init__(self, source, targets=None, *, axis_labels: str = None,
-                 meta: dict | None = None, binary_check:bool = True ):
+                 meta: dict | None = None, binary_check:bool = True, column_blocks: Tuple[int, int] | None = None):
 
         if len(source) == 0:
             raise ValueError("No source entered.")
@@ -95,10 +98,13 @@ class ModelInput:
         self.index: np.ndarray | None = None     ##None = everything; subset() sets it
         self.name: str = ""
         self._n_seen = [0]                       ## one-element list, shared by subset()
+        self.column_blocks = None if column_blocks is None else (int(column_blocks[0]), int(column_blocks[1]))
+        self._order: np.ndarray | None = None    ##column_blocks: order[new input neuron] = its row-major (flatten) index
 
         # EAGER probe: frame_shape/n_input must be known BEFORE the network is built.
         self._validate_source()
         self._record_contract()
+        self._order = self._block_order()
         self._update_meta()
 
         logger.info("ModelInput ready: n_samples=%d frame_shape=%s n_input=%d dtype=%s",
@@ -201,6 +207,20 @@ class ModelInput:
             raise ValueError(f"Input data is not spike-valued (found values outside {{0, 1}}: "
                              f"min={values.min()}, max={values.max()}). Encode to binary before wrapping.")
 
+    def _block_order(self) -> np.ndarray | None:
+        """column_blocks=(rows, cols): the image (the LAST two frame axes, H and W) is cut into rows x cols equal blocks; the input neurons are
+        reordered block by block (row-major inside a block, every leading axis such as polarity stays with its pixel), so block k is the k-th
+        equal run of input neurons = column k of builder.set_columns(rows * cols). Returns order[new neuron] = row-major index; None = no blocks."""
+        if self.column_blocks is None:
+            return None
+        rows, cols = self.column_blocks
+        if len(self.frame_shape) < 2 or rows < 1 or cols < 1 or self.frame_shape[-2] % rows or self.frame_shape[-1] % cols:
+            raise ValueError(f"column_blocks={self.column_blocks} needs frames ending in (H, W) with H % rows == 0 and W % cols == 0, "
+                             f"got frame_shape={self.frame_shape}.")
+        H, W = self.frame_shape[-2:]
+        block = (np.arange(H)[:, None] // (H // rows)) * cols + np.arange(W)[None, :] // (W // cols)      ##(H, W): the block of each pixel
+        return np.argsort(np.broadcast_to(block, self.frame_shape).ravel(order=FLATTEN_ORDER), kind="stable")
+
     def validate_network(self, network) -> None:
         """Fail loudly at bind time instead of as a broadcasting error inside the step loop."""
         n_input = getattr(network, "n_input", None)
@@ -209,6 +229,9 @@ class ModelInput:
         if int(n_input) != self.n_input:
             raise ValueError(f"Input size mismatch: data flattens to N_in={self.n_input} "
                               f"(frame_shape={self.frame_shape}), but the network declares n_input={int(n_input)}.")
+        if self.column_blocks is not None and getattr(network, "n_columns", None) != self.column_blocks[0] * self.column_blocks[1]:
+            raise ValueError(f"column_blocks={self.column_blocks} gives {self.column_blocks[0] * self.column_blocks[1]} input blocks, "
+                             f"but the network has n_columns={getattr(network, 'n_columns', None)} (builder.set_columns).")
         logger.debug("ModelInput validated against network: n_input=%d", self.n_input)
 
 
@@ -278,6 +301,7 @@ class ModelInput:
             "axis_labels": self.axis_labels,
             "frame_shape": list(self.frame_shape),
             "flatten_order": FLATTEN_ORDER,
+            "column_blocks": None if self.column_blocks is None else list(self.column_blocks),
             "sample_dtype": str(self.sample_dtype)
             })
         self.meta["model_input"] = model_input_meta
@@ -288,10 +312,13 @@ class ModelInput:
 
     def neuron_index(self, *coordinates) -> int:
         """Map original (non-time) coordinates -> flat input-neuron index."""
-        return int(np.ravel_multi_index(coordinates, self.frame_shape, order=FLATTEN_ORDER))
+        flat = int(np.ravel_multi_index(coordinates, self.frame_shape, order=FLATTEN_ORDER))
+        return flat if self._order is None else int(np.flatnonzero(self._order == flat)[0])     ##column_blocks: where that pixel sits now
 
     def neuron_coordinates(self, index: int) -> Tuple[int, ...]:
         """Map flat input-neuron index -> original (non-time) coordinates."""
+        if self._order is not None:
+            index = self._order[index]
         return tuple(int(value) for value in np.unravel_index(index, self.frame_shape, order=FLATTEN_ORDER))
 
     def reconstruct_step(self, flat_step) -> np.ndarray:
@@ -299,6 +326,10 @@ class ModelInput:
         flat_step = np.asarray(flat_step)
         if flat_step.size != self.n_input:
             raise ValueError(f"Expected {self.n_input} input values, got {flat_step.size}.")
+        if self._order is not None:
+            back = np.empty_like(flat_step.ravel())
+            back[self._order] = flat_step.ravel()
+            flat_step = back
         return flat_step.reshape(self.frame_shape, order=FLATTEN_ORDER)
 
 
@@ -343,6 +374,8 @@ class ModelInput:
                 self._check_binary(data)
 
         frames = data.reshape(data.shape[0], -1, order=FLATTEN_ORDER)
+        if self._order is not None:
+            frames = frames[:, self._order]      ##column_blocks: one image block per column (a copy)
         # NUMPY flag: Read-only VIEW to prevent silent data drift
         frames.flags.writeable = False
         return frames

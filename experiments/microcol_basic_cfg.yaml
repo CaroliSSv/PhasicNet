@@ -1,0 +1,144 @@
+#microcol_basic_cfg - EXPERIMENT FILE of the back-to-basics experiment: ExperimentCfg = dynamics + run (PhasicNet.load_experiment; written by
+# save_experiment, a re-save drops these comments). The values are STARTING values of a development sweep, not results.
+#dynamics   dt 1 ms; delta synapse; LIF (LIFexact: tau_mem 20 ms, r 20, v_rest 0: one input spike of weight w lifts V by about w);
+#           threshold EscapeThreshold: one fixed threshold per group (group_v_th; v_th = every group not listed = the inh groups), reset to 0,
+#           refractory 2 ms, escape noise width beta = a fraction of each neuron's threshold gap (0 = off);
+#           plasticity SoftBoundSTDP: dW = A x trace x (w - w_min)(w_max - w), R-STDP rates Ar_* / Ap_* on decision_group, normalize = per-neuron
+#           normalisation after every training sample; membrane noise off (one noise source)
+#run        protocol BASIC (microcol_basic_protocol.py): untrained validation pass, STDP in_L1 then L1_L2 (stage_epochs), R-STDP on L2_L3
+#           (rstdp_epochs passes, a validation pass after each), final states; 100 ms per sample; val_split 1/6 of the training samples
+#Any field can be changed per run: main(values={"dynamics.threshold.beta": 0.15, "run.protocol.rstdp_epochs": 5}).
+#YAML NOTE: write 0.001 or 1.0e-3, not 1e-3 (PyYAML reads 1e-3 as a string).
+cfg_name: microcol_basic
+cfg_id: 1cb310305bbc70b2
+dynamics:
+    simulation:
+        dt: 1.0
+        array_library: numpy
+        weights_format: sparse
+        update_on: hybrid_event
+    synapse:
+        b: null
+        cfg_type: SynapseCfg
+    integrator:
+        tau_mem: 20.0
+        v_rest: 0.0
+        r: 20.0
+        cfg_type: IntegratorCfg
+    threshold:
+        v_reset: 0.0
+        v_th: 5.0
+        tau_th: null
+        adpt_th: null
+        t_refrac: 2.0
+        cfg_type: EscapeThresholdCfg
+        beta: 0.1
+        group_v_th:
+            L1_exc: 8.0
+            L2_exc: 5.0
+            L3_exc: 8.0
+    plasticity:
+        tau_pretrace: 20.0
+        tau_posttrace: 20.0
+        A_ltp: 0.01
+        A_ltd: 0.005
+        eta_exc: 1.0
+        eta_inh: null
+        w_min: 0.0
+        w_max: 1.0
+        freeze:
+        - L1_ei
+        - L1_ie
+        - L2_ei
+        - L2_ie
+        - L3_ei
+        - L3_ie
+        - fb_L2_L1
+        - fb_L3_L2
+        cfg_type: SoftBoundSTDPCfg
+        decision_group: L3_exc
+        Ar_ltp: 0.004
+        Ar_ltd: 0.003
+        Ap_ltp: 0.0005
+        Ap_ltd: 0.004
+        normalize: true
+    noise:
+        mu_mem: 0.0
+        sigma_mem: 0.0
+        cfg_type: NoiseCfg
+    phases:
+    -   phase_type: DEFAULT
+        triggers: {}
+        trigger_mode: all
+        exit_triggers: null
+        dataloader_active: true
+run:
+    history:
+        record_spikes: false
+        include_input: false
+        record_phase: true
+        record_epoch: true
+        record_datarun: true
+        record_counts: true
+        cfg_type: HistoryCfg
+        chunk_events: 60000
+    scorer:
+        rate_hz_max: 500.0
+        rate_hz_min: 0.0
+        scorer: vrc
+        cfg_type: ScorerCfg
+    checkpoint:
+        select: final
+        content: full
+        greater_is_better: true
+        min_improvement: 0.0
+        to_disk: false
+        every: null
+        keep_last: 3
+        cfg_type: CheckpointCfg
+    data:
+        make_test_split: false
+        test_fraction: 0.0
+        stratify: true
+        n_train: null
+        n_test: null
+        shuffle: true
+        cfg_type: DataCfg
+    protocol:
+        protocol_type: BASIC
+        reset_between_samples: false
+        report_every: 500
+        epochs: 1
+        patience: null
+        val_split: 0.16666666666666666
+        t_train_ms: 100.0
+        t_state_ms: 100.0
+        stage_learn:
+        -   - in_L1
+        -   - L1_L2
+        stage_epochs:
+        - 1
+        - 1
+        cluster_groups:
+        - L1_exc
+        - L2_exc
+        - L3_exc
+        vote_group: null
+        n_init: 10
+        input_control: true
+        rate_probe: 200
+        trajectory_every: 1000
+        rstdp_learn:
+        - L2_L3
+        rstdp_epochs: 3
+        rstdp_batch: 500
+        decision_group: L3_exc
+        n_per_class: 24
+        phi_init:
+        - 1.0
+        - 1.0
+        select_best_val: true
+        n_classes: 10
+        health_every: 250
+        rate_low_hz: 0.5
+        rate_high_hz: 100.0
