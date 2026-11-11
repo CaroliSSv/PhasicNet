@@ -50,6 +50,18 @@ def _syn_block(ctx: RunContext, post_slc: slice, pre_slc: slice) -> np.ndarray: 
 ##########################   Spikes   ##################################
    ######################################################################
 
+def neurons_per_column(net, neuron_type: str | None = None, column_id: int | None = None):
+    """##columns: realized neurons per column (from net.column_ids), groups with columns only.
+    () -> {group: count per column}; neuron_type -> that group's counts; column_id -> {group: count}; both -> one int."""
+    counts = {g: np.bincount(net.column_ids[slc], minlength=net.columns) for g, slc in net.neuronslices.items()
+              if net.neuronspecs[g].columns}
+    if neuron_type is not None:
+        counts = {neuron_type: counts[neuron_type]}
+    if column_id is not None:
+        counts = {g: int(c[column_id]) for g, c in counts.items()}
+    return counts[neuron_type] if neuron_type is not None else counts
+
+
 def spike_indices(ctx: RunContext, *, include_input: bool = False) -> np.ndarray:
     """
     ONE timestep of committed spike state -> true neuron ids that fired.

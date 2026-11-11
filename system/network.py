@@ -48,6 +48,7 @@ class SynapseSpec:
     ## FILLED LATER w/ setters:
     w0: Optional[float | tuple] = None   ##scalar = every edge; (lo, hi) = uniform per edge
     p_connection: Optional[float | str | dict] = None   ##float in [0,1], or a named pattern (builder.CONNECTIVITY_PATTERNS) or a distance (kernel + decay descriptors)
+    cross_columns: bool = False ##IF colums: controls column-boundary crossing, else ignored
 
 
 @dataclass(slots=True)
@@ -65,6 +66,7 @@ class NeuronSpec:
 
     grid: Optional[Tuple[int, ...]] = None ##spatial -- shape of grid group is in
     grid_share: Optional[str] = None #spatial - grid name (for shared grids)
+    n_columns: Optional[int] = None  
 
 
 
@@ -100,12 +102,20 @@ def _decompress(n_input, post_idx: np.ndarray | None = None, synapseslices: Dict
 
 
 def _canonicalize_netspecs(neuronspecs, synapsespecs):
-    """Network section 1; neuron and synapse specifications"""
+    """Network section 1; neuron and synapse specifications."""
     canon_specs = {
         "neuronspecs": {k: asdict(v) for k, v in neuronspecs.items()},
         "synapsespecs": {k: asdict(v) for k, v in synapsespecs.items()}
         }
     return canon_specs
+
+def column_ids(n: int, n_columns: Optional[int]) -> Optional[np.ndarray]:
+    """
+    column index of each of a group's n neurons (in neuron order, sizes differ by at most one)
+    returns None if no columns used (or one)."""
+    if not n_columns or n_columns == 1:
+        return None
+    return (np.arange(n, dtype=np.int64) * int(n_columns) // n).astype(np.int32)
 
 
 def _canonicalize_netdiv(neuronslices, synapseslices, type_key):
@@ -128,8 +138,7 @@ def _canonicalize_netlists(syntype, pre_idx, post_idx, W0, positions=None):
         "post_idx": post_idx.tolist(),
         "W0": W0.tolist()
     }
-    if positions:
-        canon_lists["positions"] = {g: np.asarray(positions[g]).tolist() for g in sorted(positions)}
+    canon_lists["positions"] = {g: np.asarray(positions[g]).tolist() for g in sorted(positions or {})}  
     return canon_lists
 
 
@@ -206,6 +215,12 @@ class Network:
         ## meta (class)
         self.meta: NetMeta = meta
         self.positions: Dict[str, np.ndarray] = {} if positions is None else dict(positions)     # {} when no group has a grid
+        self.column_ids: np.ndarray = np.full(self.n_total, -1, dtype=np.int32)    ## column per TRUE neuron id, -1 = no column
+        for g, spec in neuronspecs.items():
+            ids = column_ids(spec.n, spec.n_columns)
+            if ids is not None:
+                self.column_ids[neuronslices[g]] = ids
+        self.n_columns: Optional[int] = max((int(s.n_columns) for s in neuronspecs.values() if s.n_columns and s.n_columns > 1), default=None)
 
         
         self.row_offset: int = self.n_total - self.n_post       ##n_input under post_offset, else 0

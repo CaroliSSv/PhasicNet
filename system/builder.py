@@ -11,7 +11,7 @@ import numpy as np
 from paths import EXPORT_DIR
 from utils import _read_json_yaml, _write_json_yaml, _hash, _filepath
 from freeze import reserved_name, FREEZE_KEYWORDS   ##name-collision guard (WeightProjection comes from network)
-from network import WeightProjection, NetMeta, Network, NeuronSpec, SynapseSpec, _canon_to_specs, _canonicalize_netspecs, _canonicalize_netdiv, _canonicalize_netlists, _decompress
+from network import WeightProjection, NetMeta, Network, NeuronSpec, SynapseSpec, _canon_to_specs, _canonicalize_netspecs, _canonicalize_netdiv, _canonicalize_netlists, _decompress, column_ids
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +107,7 @@ def _kernel_mask(syn: str, kernel: dict, pos_pre: np.ndarray, pos_post: np.ndarr
     return rng.random(P.shape, dtype=np.float32) < P
 
 def _column_mask(syn: str, kernel: dict, pos_pre: np.ndarray, pos_post: np.ndarray, rng) -> np.ndarray:
-    """(microcolumns) The first `dims` (default 2) grid coordinates are the COLUMN, the rest the slot inside it.
+    """(microcolumns) The first "dims" (default 2) grid coordinates are the COLUMN, the rest the slot inside it.
     Post column x takes pre column u if x*stride <= u < x*stride + rf in every dim; without rf/stride: u == x (the same column).
     pattern pairs the slots: "one_to_one" = same slot, "all_but_self" = other slots. Each allowed pair connects with probability p."""
     d = kernel.get("dims", 2)
@@ -172,6 +172,7 @@ class NetBuilder:
         self.rng = rng
         self.neuronspecs: Dict[str, NeuronSpec] = {}
         self.synapsespecs: Dict[str, SynapseSpec] = {}  ##NOTE not mutable-default silent gen issue because it is INSIDE __init__, so new net gets empty dict
+        self.n_columns: Optional[int] = None
         self.spec_name: str = None
 
     def _canonicalize_netspecs(self):
@@ -190,6 +191,10 @@ class NetBuilder:
 
         self.neuronspecs = neuronspecs
         self.synapsespecs = synapsespecs
+        counts = {spec.n_columns for spec in neuronspecs.values()}        ##n_columns: loaded file replaces earlier set_columns
+        if len(counts) > 1:
+            raise ValueError(f"File '{file}' has different column counts per neuron group: {counts}. Columns are one count for every group.")
+        self.n_columns = counts.pop() if counts else None
         self.spec_name = spec_name
         logger.info("Loaded specs from file='%s' fmt='%s': neurons=%s synapses=%s", file, fmt, 
                     self.neuronspecs.keys(), 
@@ -282,17 +287,51 @@ class NetBuilder:
         _grid_positions(self.neuronspecs, self.rng)     ## SAFETYVALVE - validate sizes
         return self
     
+    def set_columns(self, n_columns: Optional[int] = None) -> "NetBuilder":
+        """
+        split neuron groups into "n_columns" columns, with realized neurons per neurongroup split roughly evenly (+-1) between them
+            * n_columns = None, 0 or 1 = no columns
+            * Synapses are generated WITHIN a column unless cross_columns=True is set. (set_synapses).
+        
+        Order free: applied at realize() (and save_specs), where a group with fewer neurons than columns raises.
+
+        A later call overwrites; set_columns(None) forgets.
+            network.set_columns(7)
+            network.set_columns(None)                    ##no columns
+
+        **NOTE: if neurons are few, p_connection is low or columns are numerous, number of realized synapses within a synaptic group-column combination can randomize to a low number. Double-check before starting an experiment**
+        """
+        if n_columns is not None and (not isinstance(n_columns, int) or n_columns < 0):
+            raise ValueError(f"n_columns must be None or an int >= 0, got {n_columns!r}.")
+        self.n_columns = n_columns
+        logger.debug("Set n_columns=%r", n_columns)
+        return self
+
+    def _apply_n_columns(self) -> None:
+        """##n_columns: write the set_columns settings onto the neuron groups (called by realize and save_specs)."""
+        for name, spec in self.neuronspecs.items():
+            if self.n_columns and self.n_columns > spec.n:
+                raise ValueError(f"Neuron group '{name}' has {spec.n} neurons, fewer than n_columns={self.n_columns}.")
+            spec.n_columns = self.n_columns if self.n_columns and self.n_columns > 1 else None
+
     ##############################################################################
     ############################## DEFINE SYNAPSES  ##############################
 
-    def set_synapses(self, *type_pre_post: Tuple[str, str, str], clear: bool = False) -> "NetBuilder":
+    def set_synapses(self, *type_pre_post: Tuple[str, str, str] | Tuple[str, str, str, bool], clear: bool = False) -> "NetBuilder":
         """
         Define and declare synaptic groups using name/type of synapse, and type/name of pre and post neurons
 
-        Ex.:   (syn_type, pre_neuron, post_neuron)
-        network.set_synapses(("input_exc","input","exc"), ("exc_exc","exc","exc"), ("inh_exc","inh","exc"))
+
+        Arg structure: (syn_type, pre_neuron, post_neuron, cross_columns). 
+                * cross_columns:bool is optional. Set to False by default
+                * clear=True clears existing synapsespecs first
+        Ex.: 
+            * network.set_synapses(("input_exc","input","exc"), ("exc_exc","exc","exc"), ...)
+        or ex. with columns:
+            * network.set_synapses(("L3i_L3e","L3_inh","L3_exc", True), ("L3e_L3e","L3_exc","L3_exc")) 
+            * #cross_column allows synapse generation across column boundaries. Entering nothing defaults to false (ignored if no columns set)
         
-        clear=True clears existing synapsespecs first
+        
         NOTE: pre_neuron/post_neuron existence IS checked below -- an unknown neuron group raises KeyError.
         """
         ####TO ADD LATER: Typo/existence check in pre_node and post_node: IF nodes DO NOT exist -> Warning, define. If nodes DO exist: info message? ++ Node added
@@ -300,7 +339,11 @@ class NetBuilder:
             self.synapsespecs.clear()
             logger.debug(f"Previous synapses cleared.")
         
-        for syn_type, pre_neuron, post_neuron in type_pre_post:
+        for arg in type_pre_post:
+            if len(arg) not in (3, 4):
+                raise ValueError("Each synapse spec must be (syn_type, pre_neuron, post_neuron) or (syn_type, pre_neuron, post_neuron, cross_columns)")
+            syn_type, pre_neuron, post_neuron = arg[:3]
+            cross_columns = bool(arg[3]) if len(arg) == 4 else False
             if pre_neuron not in self.neuronspecs or post_neuron not in self.neuronspecs:
                 raise KeyError(f"Unknown neuron type in synapse '{syn_type}' w/ pre_neuron='{pre_neuron}', post_neuron='{post_neuron}'. \n\nKnown neurons: {self.neuronspecs.keys()}")
             
@@ -315,7 +358,7 @@ class NetBuilder:
                                {"syn_type": syn_type, "pre_neuron": pre_neuron, "post_neuron": post_neuron})
             
             
-            self.synapsespecs[syn_type] = SynapseSpec(syn_type=syn_type, pre_neuron=pre_neuron, post_neuron=post_neuron)
+            self.synapsespecs[syn_type] = SynapseSpec(syn_type=syn_type, pre_neuron=pre_neuron, post_neuron=post_neuron, cross_columns=cross_columns)
             logger.debug("Set synapse spec '%s': %s", syn_type, asdict(self.synapsespecs[syn_type]))
 
             
@@ -421,6 +464,7 @@ class NetBuilder:
             spec_name = self.spec_name
 
         spec_name_entry = {"spec_name": spec_name}
+        self._apply_n_columns()
         canon_specs = self._canonicalize_netspecs()
         spec_id = _hash(canon_specs, digest_size=8)
         spec_id_entry = {"spec_ID": spec_id}
@@ -555,6 +599,7 @@ class NetBuilder:
             raise ValueError(f"Name of network must be string, got {filename!r}")
         
         self._validate_specs()
+        self._apply_n_columns()
         logger.debug("Spec validation passed.")
         
         neuronslices, n_total, n_input, ordered_neuronspecs = self._assign_neuronslices()
@@ -637,6 +682,9 @@ class NetBuilder:
                 mask = kernel_mask(syn, syn_spec.p_connection, positions[pre_neuron], positions[post_neuron], syn_rng[syn])
             else:
                 mask = syn_rng[syn].random((pre_n, post_n), dtype=np.float32) < syn_spec.p_connection
+
+            if not syn_spec.cross_columns and self.neuronspecs[pre_neuron].n_columns:          ##n_columns: keep only same-column pairs
+                mask &= column_ids(pre_n, self.n_columns)[:, None] == column_ids(post_n, self.n_columns)[None, :]
 
             if pre_neuron == post_neuron and not allow_autapse:
                 np.fill_diagonal(mask, False)
